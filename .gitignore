@@ -1,0 +1,67 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/
+xcuserdata/
+/build/
+/DerivedData/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+*.trace
+
+# Environment
+.env
+.env.local
+*.env
+
+# Claude
+.claude/
+
+# Cache
+.ruff_cache/
+__pycache__/
+
+# Debug
+DEBUG_LOG.md
+
+# Test files
+test_*.py
+
+# Lock files
+*.lock
+
+# User data
+Kitty/Kitty.xcworkspace/
