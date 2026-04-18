@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  kitty-server:
+    build: .
+    container_name: kitty-server
+    ports:
+      - "8080:8080"
+    environment:
+      - OPENCLAW_URL=${OPENCLAW_URL:-http://host.docker.internal:18789}
+      - OPENCLAW_TOKEN=${OPENCLAW_TOKEN}
+      - VOLC_ASR_APP_ID=${VOLC_ASR_APP_ID}
+      - VOLC_ASR_TOKEN=${VOLC_ASR_TOKEN}
+      - VOLC_ASR_RESOURCE_ID=${VOLC_ASR_RESOURCE_ID}
+      - VOLC_TTS_APP_ID=${VOLC_TTS_APP_ID}
+      - VOLC_TTS_TOKEN=${VOLC_TTS_TOKEN}
+      - VOLC_TTS_CLUSTER=${VOLC_TTS_CLUSTER}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

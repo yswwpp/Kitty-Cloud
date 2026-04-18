@@ -5,7 +5,7 @@ struct ServerConfig {
     #if targetEnvironment(simulator)
     static let defaultURL = "http://localhost:8080"
     #else
-    static let defaultURL = "http://192.168.31.70:8080"
+    static let defaultURL = "http://192.168.2.8:8080"
     #endif
 }
 

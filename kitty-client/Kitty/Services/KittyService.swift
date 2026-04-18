@@ -10,10 +10,12 @@ class KittyService: ObservableObject {
     var serverURL: String {
         // 获取存储的地址
         if let savedURL = UserDefaults.standard.string(forKey: "serverURL"), !savedURL.isEmpty {
-            // 真机上：如果地址包含 localhost/127.0.0.1 或错误的端口(18789)，强制替换为正确的地址
+            // 真机上：如果地址包含旧地址，更新为正确地址
             #if !targetEnvironment(simulator)
-            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") {
-                return "http://192.168.31.70:8080"
+            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") || savedURL.contains("192.168.") {
+                let newURL = "http://10.8.0.122:8080"
+                UserDefaults.standard.set(newURL, forKey: "serverURL")
+                return newURL
             }
             #endif
             return savedURL
@@ -22,7 +24,7 @@ class KittyService: ObservableObject {
         #if targetEnvironment(simulator)
         return "http://localhost:8080"
         #else
-        return "http://192.168.31.70:8080"
+        return "http://10.8.0.122:8080"
         #endif
     }
 
@@ -30,6 +32,15 @@ class KittyService: ObservableObject {
     private var audioPlayer: AVAudioPlayer?
 
     private init() {
+        // 启动时更新旧的服务器地址
+        #if !targetEnvironment(simulator)
+        if let savedURL = UserDefaults.standard.string(forKey: "serverURL") {
+            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") || savedURL.contains("192.168.") {
+                UserDefaults.standard.set("http://10.8.0.122:8080", forKey: "serverURL")
+            }
+        }
+        #endif
+
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 120
         config.timeoutIntervalForResource = 180

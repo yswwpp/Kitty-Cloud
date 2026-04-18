@@ -5,14 +5,21 @@ struct CallView: View {
     @StateObject private var manager = ConversationManager()
     @State private var showingSettings = false
     @State private var showingHistory = false
-    @State private var showingTextInput = false
-    @State private var inputText = ""
+    @State private var isSpeakerOn = true
+    @State private var isMuted = false
 
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
                 statusView
+                callDurationView
                 buttonArea
+
+                // 通话控制条（仅在通话中显示）
+                if manager.state != .idle {
+                    callControlBar
+                }
+
                 audioIndicator
                 conversationView
                 errorView
@@ -40,11 +47,6 @@ struct CallView: View {
                     manager.clearHistory()
                 })
             }
-            .sheet(isPresented: $showingTextInput) {
-                TextInputSheet(text: $inputText, onSend: { text in
-                    sendTextMessage(text)
-                })
-            }
         }
     }
 
@@ -60,27 +62,80 @@ struct CallView: View {
         }
     }
 
+    private var callDurationView: some View {
+        Group {
+            if manager.state != .idle {
+                Text(formatDuration(manager.callDuration))
+                    .font(.system(.title2, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
     @ViewBuilder
     private var buttonArea: some View {
-        switch manager.state {
-        case .idle:
-            // 待机状态：显示开始通话按钮和测试按钮
+        if manager.state == .idle {
+            // 待机状态：显示开始通话按钮
             VStack(spacing: 16) {
                 callButton
-                HStack(spacing: 12) {
-                    testServerButton
-                    textInputButton
-                }
+                testServerButton
             }
-        case .listening:
-            // 监听状态：显示停止按钮
-            callButton
-        case .thinking, .speaking:
-            // 思考/回复状态：显示取消按钮
-            cancelButton
-        case .error:
-            // 错误状态：显示重试按钮
-            callButton
+        } else {
+            // 通话中：显示挂断按钮
+            hangupButton
+        }
+    }
+
+    /// 通话控制条：扬声器切换和静音按钮
+    private var callControlBar: some View {
+        HStack(spacing: 40) {
+            // 扬声器切换按钮
+            Button(action: {
+                isSpeakerOn.toggle()
+                setSpeakerMode(isSpeakerOn)
+            }) {
+                VStack(spacing: 4) {
+                    Image(systemName: isSpeakerOn ? "speaker.wave.3.fill" : "speaker.fill")
+                        .font(.title2)
+                    Text(isSpeakerOn ? "扬声器" : "听筒")
+                        .font(.caption2)
+                }
+                .foregroundColor(isSpeakerOn ? .blue : .gray)
+                .frame(width: 60, height: 60)
+                .background(Color.gray.opacity(0.15))
+                .cornerRadius(30)
+            }
+
+            // 静音按钮
+            Button(action: {
+                isMuted.toggle()
+                manager.setMuted(isMuted)
+            }) {
+                VStack(spacing: 4) {
+                    Image(systemName: isMuted ? "mic.slash.fill" : "mic.fill")
+                        .font(.title2)
+                    Text(isMuted ? "已静音" : "麦克风")
+                        .font(.caption2)
+                }
+                .foregroundColor(isMuted ? .red : .gray)
+                .frame(width: 60, height: 60)
+                .background(Color.gray.opacity(0.15))
+                .cornerRadius(30)
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private func setSpeakerMode(_ speaker: Bool) {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            if speaker {
+                try session.overrideOutputAudioPort(.speaker)
+            } else {
+                try session.overrideOutputAudioPort(.none)
+            }
+        } catch {
+            NSLog("❌ 切换扬声器失败: \(error)")
         }
     }
 
@@ -92,24 +147,14 @@ struct CallView: View {
         .font(.caption)
     }
 
-    private var textInputButton: some View {
-        Button("文字输入") {
-            showingTextInput = true
-        }
-        .buttonStyle(.bordered)
-        .font(.caption)
-    }
-
     private func testServerConnection() {
         Task {
             do {
                 NSLog("🔍 开始测试服务器连接...")
-                // 使用 KittyService 的服务器地址
                 let serverURL = KittyService.shared.serverURL
                 let (_, _) = try await URLSession.shared.data(from: URL(string: serverURL + "/")!)
                 NSLog("✅ 服务器连接成功")
 
-                // 测试 chat API
                 let url = URL(string: serverURL + "/chat")!
                 var request = URLRequest(url: url)
                 request.httpMethod = "POST"
@@ -123,20 +168,18 @@ struct CallView: View {
                 let response = String(data: data, encoding: .utf8) ?? ""
                 NSLog("✅ Chat 响应: \(response.prefix(50))")
 
-                // 测试 TTS
                 let ttsUrl = URL(string: serverURL + "/tts")!
                 var ttsRequest = URLRequest(url: ttsUrl)
                 ttsRequest.httpMethod = "POST"
                 ttsRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 ttsRequest.httpBody = try? JSONSerialization.data(withJSONObject: [
                     "text": "测试成功",
-                    "voice": "BV001_streaming"
+                    "voice": "zh_female_vv_uranus_bigtts"
                 ])
 
                 let (audioData, _) = try await URLSession.shared.data(for: ttsRequest)
                 NSLog("✅ TTS 返回: \(audioData.count) bytes")
 
-                // 播放音频
                 try await MainActor.run {
                     let player = try AVAudioPlayer(data: audioData)
                     player.play()
@@ -149,43 +192,41 @@ struct CallView: View {
     }
 
     private var callButton: some View {
-        ZStack {
-            Circle()
-                .fill(callButtonColor)
-                .frame(width: 120, height: 120)
+        Button(action: {
+            manager.startCall()
+        }) {
+            ZStack {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 120, height: 120)
 
-            Image(systemName: callButtonIcon)
-                .font(.system(size: 50))
-                .foregroundColor(.white)
-        }
-        .contentShape(Circle())
-        .onTapGesture {
-            toggleCall()
+                Image(systemName: "phone.fill")
+                    .font(.system(size: 50))
+                    .foregroundColor(.white)
+            }
         }
     }
 
-    private var cancelButton: some View {
+    private var hangupButton: some View {
         Button(action: {
-            manager.cancelCurrentOperation()
+            manager.endCall()
         }) {
-            HStack(spacing: 8) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title2)
-                Text("取消")
-                    .font(.headline)
+            ZStack {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 120, height: 120)
+
+                Image(systemName: "phone.down.fill")
+                    .font(.system(size: 50))
+                    .foregroundColor(.white)
             }
-            .foregroundColor(.white)
-            .padding(.horizontal, 32)
-            .padding(.vertical, 16)
-            .background(Color.red)
-            .cornerRadius(30)
         }
     }
 
     private var audioIndicator: some View {
         WaveformView(
             audioLevel: manager.audioLevel,
-            isListening: manager.state == .listening || manager.state == .speaking,
+            isListening: manager.state == .listening || manager.state == .speaking || manager.state == .thinking,
             barCount: 7,
             maxHeight: 50
         )
@@ -241,6 +282,7 @@ struct CallView: View {
     private var statusColor: Color {
         switch manager.state {
         case .idle: return .gray
+        case .connected: return .green
         case .listening: return .green
         case .thinking: return .blue
         case .speaking: return .purple
@@ -248,125 +290,10 @@ struct CallView: View {
         }
     }
 
-    private var callButtonColor: Color {
-        switch manager.state {
-        case .idle: return .green
-        case .listening: return .red
-        case .error: return .orange
-        default: return .gray
-        }
-    }
-
-    private var callButtonIcon: String {
-        switch manager.state {
-        case .idle: return "phone.fill"
-        case .listening: return "phone.down.fill"
-        case .error: return "arrow.clockwise"
-        default: return "phone.fill"
-        }
-    }
-
-    private func toggleCall() {
-        NSLog("📱 toggleCall 被调用, 当前状态: \(manager.state.rawValue)")
-
-        switch manager.state {
-        case .idle:
-            manager.startConversation()
-        case .listening:
-            manager.stopConversation()
-        case .error:
-            // 错误状态点击重新开始
-            manager.startConversation()
-        default:
-            break
-        }
-    }
-
-    private func sendTextMessage(_ text: String) {
-        guard !text.isEmpty else { return }
-        inputText = ""
-
-        Task {
-            do {
-                // 显示用户文本
-                await MainActor.run {
-                    manager.userText = text
-                    manager.state = .thinking
-                }
-
-                // 发送 chat 请求
-                var fullReply = ""
-                let url = URL(string: "http://localhost:8080/chat")!
-                var request = URLRequest(url: url)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                request.httpBody = try? JSONSerialization.data(withJSONObject: [
-                    "message": text,
-                    "session_id": "text_input"
-                ])
-
-                let (bytes, _) = try await URLSession.shared.bytes(for: request)
-
-                for try await line in bytes.lines {
-                    if line.hasPrefix("data: ") {
-                        let dataStr = String(line.dropFirst(6))
-                        if dataStr == "[DONE]" { break }
-                        if let data = dataStr.data(using: .utf8),
-                           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                           let choices = json["choices"] as? [[String: Any]],
-                           let delta = choices.first?["delta"] as? [String: Any],
-                           let content = delta["content"] as? String {
-                            fullReply += content
-                            await MainActor.run {
-                                manager.assistantText = fullReply
-                            }
-                        }
-                    } else if !line.isEmpty {
-                        fullReply += line
-                        await MainActor.run {
-                            manager.assistantText = fullReply
-                        }
-                    }
-                }
-
-                // 播放 TTS
-                if !fullReply.isEmpty {
-                    await MainActor.run {
-                        manager.state = .speaking
-                    }
-
-                    let ttsUrl = URL(string: "http://localhost:8080/tts")!
-                    var ttsRequest = URLRequest(url: ttsUrl)
-                    ttsRequest.httpMethod = "POST"
-                    ttsRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    ttsRequest.httpBody = try? JSONSerialization.data(withJSONObject: [
-                        "text": fullReply,
-                        "voice": "BV001_streaming"
-                    ])
-
-                    let (audioData, _) = try await URLSession.shared.data(for: ttsRequest)
-
-                    // 播放音频
-                    try await MainActor.run {
-                        let player = try AVAudioPlayer(data: audioData)
-                        player.play()
-                        // 等待播放完成
-                        RunLoop.current.run(until: Date(timeIntervalSinceNow: player.duration))
-                    }
-                }
-
-                await MainActor.run {
-                    manager.state = .idle
-                }
-
-            } catch {
-                NSLog("❌ 发送消息失败: \(error)")
-                await MainActor.run {
-                    manager.state = .error
-                    manager.errorMessage = error.localizedDescription
-                }
-            }
-        }
+    private func formatDuration(_ seconds: Int) -> String {
+        let minutes = seconds / 60
+        let secs = seconds % 60
+        return String(format: "%02d:%02d", minutes, secs)
     }
 }
 
@@ -436,42 +363,4 @@ struct HistoryView: View {
 
 #Preview {
     CallView()
-}
-
-// MARK: - Text Input Sheet
-
-struct TextInputSheet: View {
-    @Binding var text: String
-    let onSend: (String) -> Void
-    @Environment(\.dismiss) var dismiss
-
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                Text("输入消息进行对话")
-                    .font(.headline)
-                    .foregroundColor(.secondary)
-
-                TextField("输入消息...", text: $text)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .padding()
-
-                Button("发送") {
-                    onSend(text)
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(text.isEmpty)
-
-                Spacer()
-            }
-            .padding()
-            .navigationTitle("文字输入")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
-                }
-            }
-        }
-    }
 }
