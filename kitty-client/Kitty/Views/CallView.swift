@@ -130,10 +130,24 @@ struct CallView: View {
         do {
             let session = AVAudioSession.sharedInstance()
             if speaker {
+                // 扬声器模式：使用 default 模式 + 强制扬声器
+                try session.setCategory(
+                    .playAndRecord,
+                    mode: .default,
+                    options: [.defaultToSpeaker, .mixWithOthers]
+                )
                 try session.overrideOutputAudioPort(.speaker)
+                NSLog("🔊 切换到扬声器模式（高音量）")
             } else {
-                try session.overrideOutputAudioPort(.none)
+                // 听筒/蓝牙模式
+                try session.setCategory(
+                    .playAndRecord,
+                    mode: .voiceChat,
+                    options: [.allowBluetooth, .mixWithOthers]
+                )
+                NSLog("🔊 切换到听筒/蓝牙模式")
             }
+            try session.setActive(true)
         } catch {
             NSLog("❌ 切换扬声器失败: \(error)")
         }

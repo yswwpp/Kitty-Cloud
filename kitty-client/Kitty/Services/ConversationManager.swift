@@ -314,7 +314,7 @@ class ConversationManager: ObservableObject {
         do {
             let player = try AVAudioPlayer(data: wavData)
             player.numberOfLoops = -1
-            player.volume = 0.3
+            player.volume = 0.6  // 提高思考音效音量
             return player
         } catch {
             NSLog("❌ 创建思考音效失败: \(error)")
@@ -597,65 +597,74 @@ class ConversationManager: ObservableObject {
 
     // MARK: - Audio Recording
 
-    /// 启动音频引擎（持续运行，用于打断检测和录音）
-    private func startAudioEngine() {
+    /// 配置音频会话（在通话开始时调用一次）
+    private func configureAudioSession() {
         let audioSession = AVAudioSession.sharedInstance()
         do {
-            // 检查是否有蓝牙设备连接
+            // 检测是否有蓝牙设备
             let hasBluetooth = audioSession.availableInputs?.contains { input in
-                input.portType == .bluetoothHFP || input.portType == .bluetoothLE || input.portType == .bluetoothA2DP
+                input.portType == .bluetoothHFP || input.portType == .bluetoothLE
             } ?? false
 
             if hasBluetooth {
-                // 有蓝牙设备：使用蓝牙模式（支持麦克风）
-                try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .mixWithOthers])
-                NSLog("📍 蓝牙模式：已启用蓝牙支持")
+                // 蓝牙模式：使用 voiceChat 保证双向通信
+                try audioSession.setCategory(
+                    .playAndRecord,
+                    mode: .voiceChat,
+                    options: [.allowBluetooth, .mixWithOthers]
+                )
+                NSLog("📍 蓝牙模式")
             } else {
-                // 无蓝牙设备：使用扬声器模式
-                try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .mixWithOthers])
-                NSLog("📍 扬声器模式：已启用扬声器")
+                // 扬声器模式：使用 default 模式获得更大音量
+                // .voiceChat 模式会限制扬声器音量
+                try audioSession.setCategory(
+                    .playAndRecord,
+                    mode: .default,
+                    options: [.defaultToSpeaker, .mixWithOthers]
+                )
+                // 强制扬声器输出
+                try audioSession.overrideOutputAudioPort(.speaker)
+                NSLog("📍 扬声器模式（高音量）")
             }
 
             try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
 
             // 打印当前音频路由信息
             let currentRoute = audioSession.currentRoute
-            NSLog("📍 当前音频路由: 输入=\(currentRoute.inputs.first?.portName ?? "未知"), 输出=\(currentRoute.outputs.first?.portName ?? "未知")")
+            NSLog("   输入: \(currentRoute.inputs.first?.portName ?? "未知") (\(currentRoute.inputs.first?.portType.rawValue ?? "未知"))")
+            NSLog("   输出: \(currentRoute.outputs.first?.portName ?? "未知") (\(currentRoute.outputs.first?.portType.rawValue ?? "未知"))")
 
-            // 如果有蓝牙设备，尝试使用蓝牙输入
+            // 打印所有可用输入
+            NSLog("📍 可用输入设备:")
             for input in audioSession.availableInputs ?? [] {
-                NSLog("📍 可用输入: \(input.portName) (\(input.portType.rawValue))")
-                if input.portType == .bluetoothHFP || input.portType == .bluetoothLE {
-                    try? audioSession.setPreferredInput(input)
-                    NSLog("✅ 已切换到蓝牙麦克风: \(input.portName)")
-                    break
-                }
+                NSLog("   - \(input.portName) (\(input.portType.rawValue))")
             }
-
-            NSLog("✅ 音频会话配置成功")
         } catch {
-            print("❌ 音频会话配置失败: \(error)")
-            errorMessage = "音频配置失败"
-            state = .error
-            return
+            NSLog("❌ 音频会话配置失败: \(error)")
         }
+    }
+
+    /// 启动音频引擎（持续运行，用于打断检测和录音）
+    private func startAudioEngine() {
+        // 配置音频会话（只需一次）
+        configureAudioSession()
 
         audioEngine = AVAudioEngine()
         let inputNode = audioEngine!.inputNode
 
-        // 关键：启用语音处理（回声消除）
+        // 启用语音处理（回声消除、降噪）
         do {
             try inputNode.setVoiceProcessingEnabled(true)
             NSLog("✅ 语音处理已启用（回声消除）")
         } catch {
-            NSLog("❌ 启用语音处理失败: \(error)")
+            NSLog("⚠️ 启用语音处理失败: \(error)")
         }
 
         let format = inputNode.outputFormat(forBus: 0)
         let targetFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true)!
 
         guard let converter = AVAudioConverter(from: format, to: targetFormat) else {
-            print("❌ 无法创建音频转换器")
+            NSLog("❌ 无法创建音频转换器")
             return
         }
 
@@ -698,7 +707,7 @@ class ConversationManager: ObservableObject {
         do {
             try audioEngine?.start()
             isRecording = true
-            NSLog("🎤 音频引擎已启动（持续运行）")
+            NSLog("🎤 音频引擎已启动")
         } catch {
             NSLog("❌ 音频引擎启动失败: \(error)")
         }
@@ -959,49 +968,48 @@ class ConversationManager: ObservableObject {
     // MARK: - Audio Playback
 
     private func playAudioAndWait(_ data: Data) async {
-        do {
-            // 保持当前的音频路由设置，只激活会话
-            try AVAudioSession.sharedInstance().setActive(true)
+        // 不切换音频模式，保持 voiceChat 配置
+        // 这确保蓝牙路由不会丢失
+        let audioSession = AVAudioSession.sharedInstance()
+        try? audioSession.setActive(true)
 
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self else {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else {
+                    continuation.resume()
+                    return
+                }
+
+                do {
+                    var isResumed = false
+
+                    self.audioPlayerDelegate = AudioPlayerDelegate(onFinish: { [weak self] in
+                        guard let self = self, !isResumed else { return }
+                        isResumed = true
+                        self.playbackContinuation = nil
                         continuation.resume()
-                        return
-                    }
+                    })
 
-                    do {
-                        var isResumed = false  // 防止重复 resume
+                    self.audioPlayer = try AVAudioPlayer(data: data)
+                    self.audioPlayer?.delegate = self.audioPlayerDelegate
+                    self.audioPlayer?.volume = 1.0
+                    self.audioPlayer?.prepareToPlay()
 
-                        self.audioPlayerDelegate = AudioPlayerDelegate(onFinish: { [weak self] in
-                            guard let self = self, !isResumed else { return }
-                            isResumed = true
-                            self.playbackContinuation = nil
-                            continuation.resume()
-                        })
+                    let success = self.audioPlayer?.play() ?? false
+                    NSLog("🔊 播放音频: \(success ? "成功" : "失败"), 数据量: \(data.count) bytes")
 
-                        self.audioPlayer = try AVAudioPlayer(data: data)
-                        self.audioPlayer?.delegate = self.audioPlayerDelegate
-                        self.audioPlayer?.prepareToPlay()
-
-                        let success = self.audioPlayer?.play() ?? false
-                        NSLog("🔊 播放音频: \(success ? "成功" : "失败"), 数据量: \(data.count) bytes")
-
-                        if success {
-                            self.playbackContinuation = continuation
-                        } else {
-                            isResumed = true
-                            self.audioPlayerDelegate = nil
-                            continuation.resume()
-                        }
-                    } catch {
-                        NSLog("❌ 播放音频失败: \(error)")
+                    if success {
+                        self.playbackContinuation = continuation
+                    } else {
+                        isResumed = true
+                        self.audioPlayerDelegate = nil
                         continuation.resume()
                     }
+                } catch {
+                    NSLog("❌ 播放音频失败: \(error)")
+                    continuation.resume()
                 }
             }
-        } catch {
-            NSLog("❌ 音频会话配置失败: \(error)")
         }
     }
 

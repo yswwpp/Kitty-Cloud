@@ -312,12 +312,11 @@ async def synthesize_speech(text: str, voice: str) -> bytes:
             json=payload,
             headers={
                 "Content-Type": "application/json",
-                "X-Api-App-Key": VOLC_TTS_APP_ID,
-                "X-Api-Access-Key": VOLC_TTS_TOKEN,
-                "X-Api-Resource-Id": VOLC_TTS_CLUSTER,
+                "Authorization": f"Bearer; {VOLC_TTS_TOKEN}",
             },
         )
         data = response.json()
+        print(f"[TTS] Response: {data}")
         if data.get("code") == 3000 and "data" in data:
             return base64.b64decode(data["data"])
         raise HTTPException(status_code=500, detail=data.get("message", "TTS failed"))
