@@ -48,7 +48,7 @@ echo ""
 echo "🔌 连接服务器..."
 echo ""
 
-ssh -i "$SSH_KEY" "$SSH_HOST" "cd $SERVER_DIR && git pull origin main && cd kitty-server && docker rm -f kitty-server 2>/dev/null || true && docker-compose build && docker-compose up -d && sleep 2 && docker-compose logs --tail=30 && curl -s http://localhost:8080/"
+ssh -i "$SSH_KEY" "$SSH_HOST" "export http_proxy=http://127.0.0.1:7890 && export https_proxy=http://127.0.0.1:7890 && cd $SERVER_DIR && git pull origin main && cd kitty-server && docker rm -f kitty-server 2>/dev/null || true && docker-compose build && docker-compose up -d && sleep 2 && docker-compose logs --tail=30 && curl -s http://localhost:8080/"
 
 echo ""
 echo "✅ 部署完成!"
