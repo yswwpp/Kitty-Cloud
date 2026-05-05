@@ -100,8 +100,17 @@ class ClearSessionRequest(BaseModel):
     session_id: str = "default"
 
 
+@app.on_event("startup")
+async def startup_event():
+    print(f"[SERVER] 🚀 Kitty Server 启动中...")
+    print(f"[SERVER] OpenClaw URL: {OPENCLAW_URL}")
+    print(f"[SERVER] ASR App ID: {VOLC_ASR_APP_ID}")
+    print(f"[SERVER] TTS App ID: {VOLC_TTS_APP_ID}")
+
+
 @app.get("/")
 async def root():
+    print(f"[SERVER] 📨 收到请求: /")
     return {"name": "Kitty Server", "version": "1.0.0", "status": "running"}
 
 
