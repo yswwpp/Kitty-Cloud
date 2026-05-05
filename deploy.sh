@@ -2,7 +2,6 @@
 
 # Kitty Cloud 部署脚本
 # 用法: ./deploy.sh
-# 本机和服务器都需要 proxy-on 才能访问 GitHub
 
 set -e
 
@@ -49,68 +48,7 @@ echo ""
 echo "🔌 连接服务器..."
 echo ""
 
-# SSH 登录并执行部署命令
-ssh -i "$SSH_KEY" "$SSH_HOST" bash << 'REMOTE_SCRIPT'
-set -e
-
-# 开启代理
-source ~/.zshrc
-proxy-on
-
-cd /home/yswwpp/dev/project/tools/Kitty-Cloud
-
-echo "📥 拉取最新代码..."
-git pull origin main
-
-echo ""
-echo "🔨 构建 Docker 镜像..."
-cd kitty-server
-docker build -t kitty-server:latest .
-
-echo ""
-echo "🚀 启动服务..."
-# 停止并删除旧容器
-docker stop kitty-server 2>/dev/null || true
-docker rm kitty-server 2>/dev/null || true
-
-# 加载环境变量
-source .env
-
-# 启动新容器
-docker run -d \
-    --name kitty-server \
-    -p 8080:8080 \
-    --add-host=host.docker.internal:host-gateway \
-    --restart unless-stopped \
-    -e OPENCLAW_URL \
-    -e OPENCLAW_TOKEN \
-    -e VOLC_ASR_APP_ID \
-    -e VOLC_ASR_TOKEN \
-    -e VOLC_ASR_RESOURCE_ID \
-    -e VOLC_TTS_APP_ID \
-    -e VOLC_TTS_TOKEN \
-    -e VOLC_TTS_CLUSTER \
-    kitty-server:latest
-
-echo ""
-echo "⏳ 等待服务启动..."
-sleep 2
-
-echo ""
-echo "📊 服务状态:"
-docker ps --filter name=kitty-server
-
-echo ""
-echo "📋 最近日志:"
-docker logs kitty-server --tail=20
-
-echo ""
-echo "🧪 测试 API..."
-curl -s http://localhost:8080/ && echo ""
+ssh -i "$SSH_KEY" "$SSH_HOST" "cd $SERVER_DIR && git pull origin main && cd kitty-server && docker rm -f kitty-server 2>/dev/null || true && docker-compose build && docker-compose up -d && sleep 2 && docker-compose logs --tail=30 && curl -s http://localhost:8080/"
 
 echo ""
 echo "✅ 部署完成!"
-REMOTE_SCRIPT
-
-echo ""
-echo "🎉 全部完成!"
