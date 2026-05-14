@@ -3,9 +3,9 @@ import Foundation
 struct ServerConfig {
     // 模拟器使用 localhost，真机使用 Mac 的局域网 IP
     #if targetEnvironment(simulator)
-    static let defaultURL = "http://localhost:8080"
+    static let defaultURL = "http://localhost:8081"
     #else
-    static let defaultURL = "http://192.168.2.8:8080"
+    static let defaultURL = "http://192.168.2.8:8081"
     #endif
 }
 

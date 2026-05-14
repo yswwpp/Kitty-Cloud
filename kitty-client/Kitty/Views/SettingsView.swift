@@ -3,7 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
 
-    @AppStorage("serverURL") private var serverURL = "http://localhost:8080"
+    @AppStorage("serverURL") private var serverURL = "http://localhost:8081"
     @AppStorage("selectedVoice") private var selectedVoice: String = VoiceType.uranus.rawValue
 
     var body: some View {
