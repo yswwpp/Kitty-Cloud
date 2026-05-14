@@ -1,0 +1,37 @@
+name: Kitty
+options:
+  bundleIdPrefix: com.yswwpp.kitty
+  deploymentTarget:
+    iOS: "15.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    PRODUCT_NAME: Kitty
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    ENABLE_PREVIEWS: YES
+    SWIFT_OBJC_BRIDGING_HEADER: Kitty/Kitty-Bridging-Header.h
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+
+targets:
+  Kitty:
+    type: application
+    platform: iOS
+    sources:
+      - path: Kitty
+        excludes:
+          - "**/.DS_Store"
+          - "project.yml"
+          - "*.xcodeproj"
+    settings:
+      base:
+        INFOPLIST_FILE: Kitty/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.kitty.app
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: LLDRT755HC
+        ENABLE_USER_SCRIPT_SANDBXING: NO
+    entitlements:
+      path: Kitty/Kitty.entitlements
+      properties:
+        com.apple.security.application-groups: []

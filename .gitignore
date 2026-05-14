@@ -47,9 +47,6 @@ build/
 .env.local
 *.env
 
-# Claude
-.claude/
-
 # Cache
 .ruff_cache/
 __pycache__/
@@ -65,3 +62,6 @@ test_*.py
 
 # User data
 Kitty/Kitty.xcworkspace/
+
+# CocoaPods
+kitty-client/Pods/
