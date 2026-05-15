@@ -7,10 +7,19 @@ struct CallView: View {
     @State private var showingHistory = false
     @State private var isMuted = false
 
-    @AppStorage("selectedModel") private var selectedModel: String = "openclaw/main"
+    @AppStorage("selectedModel") private var selectedModel: String = "bailian/qwen3.6-plus"
     @State private var showingModelPicker = false
     @State private var availableModels: [ModelInfo] = []
     @State private var showingResetAlert = false
+
+    // 当前选中模型的显示名称
+    private var currentModelDisplayName: String {
+        if let model = availableModels.first(where: { $0.id == selectedModel }) {
+            return model.displayName
+        }
+        // 默认显示名称
+        return "Qwen3.6 Plus"
+    }
 
     var body: some View {
         NavigationView {
@@ -90,17 +99,17 @@ struct CallView: View {
                         showingModelPicker = true
                     }
                 }) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 6) {
                         Image(systemName: "cpu")
-                            .font(.caption2)
-                        Text(selectedModel.components(separatedBy: "/").last ?? selectedModel)
-                            .font(.caption2)
+                            .font(.body)
+                        Text(currentModelDisplayName)
+                            .font(.body)
                     }
                     .foregroundColor(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(8)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.gray.opacity(0.15))
+                    .cornerRadius(12)
                 }
                 .confirmationDialog("选择模型", isPresented: $showingModelPicker, titleVisibility: .visible) {
                     ForEach(availableModels) { model in
@@ -109,6 +118,14 @@ struct CallView: View {
                         }
                     }
                     Button("取消", role: .cancel) {}
+                }
+                // 启动时预加载模型列表
+                .onAppear {
+                    Task {
+                        if let models = try? await KittyService.shared.fetchModels() {
+                            availableModels = models
+                        }
+                    }
                 }
             }
         }

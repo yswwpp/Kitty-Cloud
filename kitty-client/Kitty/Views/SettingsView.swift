@@ -5,7 +5,7 @@ struct SettingsView: View {
 
     @AppStorage("serverURL") private var serverURL = "http://localhost:8081"
     @AppStorage("selectedVoice") private var selectedVoice: String = VoiceType.uranus.rawValue
-    @AppStorage("selectedModel") private var selectedModel: String = "openclaw/main"
+    @AppStorage("selectedModel") private var selectedModel: String = "bailian/qwen3.6-plus"
     @State private var availableModels: [ModelInfo] = []
 
     var body: some View {
