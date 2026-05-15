@@ -272,7 +272,11 @@ class KittyService: ObservableObject {
             }
             return modelData.compactMap { item -> ModelInfo? in
                 guard let id = item["id"] as? String else { return nil }
-                return ModelInfo(id: id, ownedBy: item["owned_by"] as? String ?? "")
+                return ModelInfo(
+                    id: id,
+                    ownedBy: item["owned_by"] as? String ?? "",
+                    displayName: item["display_name"] as? String
+                )
             }
         case 401, 403:
             throw KittyError.unauthorized

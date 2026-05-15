@@ -199,6 +199,14 @@ async def clear_session(session_id: str):
     return {"status": "not_found", "session_id": session_id}
 
 
+# 模型友好名称映射
+MODEL_DISPLAY_NAMES = {
+    "openclaw": "DeepSeek V3",
+    "openclaw/main": "DeepSeek V3",
+    "openclaw/default": "DeepSeek V3 (默认)",
+}
+
+
 @app.get("/models")
 async def list_models():
     async with httpx.AsyncClient(timeout=30) as client:
@@ -209,7 +217,15 @@ async def list_models():
                 "x-openclaw-scopes": "operator.write,operator.read",
             },
         )
-        return response.json()
+        data = response.json()
+        # 为每个模型添加友好显示名称
+        if "data" in data:
+            for model in data["data"]:
+                model_id = model.get("id", "")
+                model["display_name"] = MODEL_DISPLAY_NAMES.get(
+                    model_id, model_id.split("/")[-1] if "/" in model_id else model_id
+                )
+        return data
 
 
 @app.post("/tts")

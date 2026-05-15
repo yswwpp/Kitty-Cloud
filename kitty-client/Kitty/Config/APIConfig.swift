@@ -12,9 +12,13 @@ struct ServerConfig {
 struct ModelInfo: Identifiable, Hashable {
     let id: String
     let ownedBy: String
+    let displayName: String
 
-    var displayName: String {
-        id.components(separatedBy: "/").last ?? id
+    init(id: String, ownedBy: String, displayName: String? = nil) {
+        self.id = id
+        self.ownedBy = ownedBy
+        // 使用服务端提供的 displayName，否则从 id 提取
+        self.displayName = displayName ?? id.components(separatedBy: "/").last ?? id
     }
 }
 
