@@ -199,33 +199,34 @@ async def clear_session(session_id: str):
     return {"status": "not_found", "session_id": session_id}
 
 
-# 模型友好名称映射
-MODEL_DISPLAY_NAMES = {
-    "openclaw": "DeepSeek V3",
-    "openclaw/main": "DeepSeek V3",
-    "openclaw/default": "DeepSeek V3 (默认)",
-}
+# 可用模型列表（直接定义，不依赖 OpenClaw API）
+AVAILABLE_MODELS = [
+    {"id": "bailian/qwen3.6-plus", "name": "Qwen3.6 Plus", "desc": "阿里通义千问，支持图文"},
+    {"id": "bailian/qwen3.5-plus", "name": "Qwen3.5 Plus", "desc": "阿里通义千问，支持图文"},
+    {"id": "bailian/glm-5", "name": "GLM 5", "desc": "智谱 GLM"},
+    {"id": "bailian/kimi-k2.5", "name": "Kimi K2.5", "desc": "月之暗面 Kimi"},
+    {"id": "qianfan/deepseek-v4-flash", "name": "DeepSeek V4 Flash", "desc": "DeepSeek 快速版"},
+    {"id": "qianfan/glm-5.1", "name": "GLM 5.1", "desc": "智谱最新版"},
+]
 
 
 @app.get("/models")
 async def list_models():
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.get(
-            f"{OPENCLAW_URL}/v1/models",
-            headers={
-                "Authorization": f"Bearer {OPENCLAW_TOKEN}",
-                "x-openclaw-scopes": "operator.write,operator.read",
-            },
-        )
-        data = response.json()
-        # 为每个模型添加友好显示名称
-        if "data" in data:
-            for model in data["data"]:
-                model_id = model.get("id", "")
-                model["display_name"] = MODEL_DISPLAY_NAMES.get(
-                    model_id, model_id.split("/")[-1] if "/" in model_id else model_id
-                )
-        return data
+    """返回可用模型列表"""
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": model["id"],
+                "object": "model",
+                "created": 0,
+                "owned_by": model["id"].split("/")[0],
+                "display_name": model["name"],
+                "description": model["desc"],
+            }
+            for model in AVAILABLE_MODELS
+        ],
+    }
 
 
 @app.post("/tts")
