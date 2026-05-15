@@ -24,6 +24,7 @@ class ConversationManager: ObservableObject {
     @Published var audioLevel: Float = 0
     @Published var messages: [Message] = []
     @Published var callDuration: Int = 0  // 通话时长（秒）
+    @Published var isSpeakerOn: Bool = true  // 扬声器状态（供 UI 绑定）
 
     enum ConversationState: String {
         case idle = "待机"
@@ -46,6 +47,7 @@ class ConversationManager: ObservableObject {
     private var audioPlayer: AVAudioPlayer?
     private var audioPlayerDelegate: AudioPlayerDelegate?
     private var playbackContinuation: CheckedContinuation<Void, Never>?
+    private var currentAudioData: Data?  // 当前播放的音频数据（用于切换扬声器后恢复）
 
     // 静音检测配置
     private let silenceThreshold: Float = 0.08
@@ -95,12 +97,66 @@ class ConversationManager: ObservableObject {
     // MARK: - Audio Session Interruption
 
     private func setupAudioSessionInterruptionObserver() {
+        // 监听音频中断（来电等）
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleAudioSessionInterruption),
             name: AVAudioSession.interruptionNotification,
             object: nil
         )
+
+        // 监听音频路由变化（扬声器切换等）
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRouteChange),
+            name: AVAudioSession.routeChangeNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleRouteChange(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
+            return
+        }
+
+        // 只处理我们主动触发的路由变化
+        switch reason {
+        case .override:
+            // 用户通过 overrideOutputAudioPort 触发的变化
+            NSLog("📡 路由变化: override")
+            // 路由变化后恢复播放
+            resumePlaybackIfNeeded()
+        case .newDeviceAvailable, .oldDeviceUnavailable:
+            NSLog("📡 路由变化: 设备连接/断开")
+        default:
+            NSLog("📡 路由变化: \(reason.rawValue)")
+        }
+    }
+
+    /// 路由变化后恢复播放
+    private func resumePlaybackIfNeeded() {
+        guard let data = currentAudioData else { return }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            // 如果当前没有播放，尝试恢复
+            if self.audioPlayer?.isPlaying != true {
+                do {
+                    self.audioPlayer = try AVAudioPlayer(data: data)
+                    self.audioPlayer?.delegate = self.audioPlayerDelegate
+                    self.audioPlayer?.volume = 1.0
+                    self.audioPlayer?.prepareToPlay()
+
+                    let success = self.audioPlayer?.play() ?? false
+                    NSLog("🔊 路由变化后恢复播放: \(success ? "成功" : "失败")")
+                } catch {
+                    NSLog("❌ 路由变化后恢复播放失败: \(error)")
+                }
+            }
+        }
     }
 
     @objc private func handleAudioSessionInterruption(_ notification: Notification) {
@@ -215,20 +271,21 @@ class ConversationManager: ObservableObject {
         thinkingAudioPlayer = generateThinkingSound()
     }
 
-    /// 生成思考音效（优美柔和的背景音乐）
+    /// 生成思考音效（轻柔温暖的 ambient 背景音乐）
     private func generateThinkingSound() -> AVAudioPlayer? {
         let sampleRate: Double = 44100
-        let duration: Double = 12.0  // 12秒循环
+        let duration: Double = 8.0  // 8秒循环，更紧凑
         let samples = Int(sampleRate * duration)
 
         var audioData = Data(capacity: samples * 2)
 
-        // 定义一个优美的和弦进行 (C - Am - F - G)
+        // 温暖的和弦进行（大七和弦 + 小七和弦，更有 ambient 感）
+        // Am7 - Fmaj7 - Cmaj7 - G7
         let chordProgression: [[Double]] = [
-            [261.63, 329.63, 392.00, 523.25],      // C 大三和弦
-            [220.00, 261.63, 329.63, 440.00],      // A 小三和弦
-            [174.61, 220.00, 261.63, 349.23],      // F 大三和弦
-            [196.00, 246.94, 293.66, 392.00]       // G 大三和弦
+            [110.0, 220.0, 261.63, 329.63, 392.0],   // Am7 (A-C-E-G)
+            [87.31, 174.61, 220.0, 261.63, 329.63],  // Fmaj7 (F-A-C-E)
+            [65.41, 130.81, 164.81, 196.0, 246.94],  // Cmaj7 (C-E-G-B) 低八度更温暖
+            [98.0, 196.0, 246.94, 293.66, 349.23]    // G7 (G-B-D-F)
         ]
         let chordDuration = duration / Double(chordProgression.count)
 
@@ -240,66 +297,69 @@ class ConversationManager: ObservableObject {
             let localT = t.truncatingRemainder(dividingBy: chordDuration)
             let chord = chordProgression[chordIndex]
 
-            // 下一个和弦（用于平滑过渡）
-            let nextChordIndex = (chordIndex + 1) % chordProgression.count
-            let nextChord = chordProgression[nextChordIndex]
-
             // 平滑过渡（交叉淡入淡出）
-            let transitionTime = 0.5  // 过渡时间
+            let transitionTime = 1.0  // 更长的过渡时间，更柔和
             let crossfade = min(1.0, max(0.0, (localT - (chordDuration - transitionTime)) / transitionTime))
 
             var sample: Double = 0
 
-            // 当前和弦
+            // 柔和的 pad 音色（持续性的背景音）
             for (index, freq) in chord.enumerated() {
-                // 琶音延迟
-                let arpeggioDelay = Double(index) * 0.15
-                if localT > arpeggioDelay {
-                    let noteT = localT - arpeggioDelay
-                    // 柔和的包络
-                    let attack = min(1.0, noteT / 0.3)
-                    let decay = exp(-noteT / 3.0)
-                    let envelope = attack * decay
+                // 每个音符有不同的音量，低音更响，高音更轻
+                let noteVolume = 0.08 * exp(-Double(index) * 0.3)
 
-                    // 使用正弦波 + 轻微的泛音
-                    let fundamental = sin(2.0 * .pi * freq * t)
-                    let harmonic1 = 0.3 * sin(2.0 * .pi * freq * 2 * t)  // 第一泛音
-                    let harmonic2 = 0.1 * sin(2.0 * .pi * freq * 3 * t)  // 第二泛音
+                // 柔和的包络 - 缓慢的 attack 和 decay
+                let attack = min(1.0, localT / 1.5)
+                let decay = exp(-localT / 6.0)
+                let envelope = attack * decay
 
-                    sample += 0.12 * envelope * (fundamental + harmonic1 + harmonic2) * (1.0 - crossfade)
-                }
+                // 使用三角波（更柔和）+ 正弦波组合
+                let triangle = 2.0 * abs(2.0 * (freq * t / 1.0).truncatingRemainder(dividingBy: 1.0) - 0.5) - 1.0
+                let sine = sin(2.0 * .pi * freq * t)
+                let wave = 0.6 * triangle + 0.4 * sine  // 混合波形
+
+                // 添加轻微的颤音
+                let vibrato = 1.0 + 0.002 * sin(2.0 * .pi * 4.0 * t)
+                let note = wave * vibrato * envelope * noteVolume * (1.0 - crossfade)
+
+                sample += note
             }
 
             // 下一个和弦（淡入）
             if crossfade > 0 {
+                let nextChordIndex = (chordIndex + 1) % chordProgression.count
+                let nextChord = chordProgression[nextChordIndex]
+
                 for (index, freq) in nextChord.enumerated() {
-                    let arpeggioDelay = Double(index) * 0.15
-                    let noteT = localT - (chordDuration - transitionTime) + arpeggioDelay
-                    if noteT > arpeggioDelay {
-                        let attack = min(1.0, noteT / 0.3)
-                        let decay = exp(-noteT / 3.0)
-                        let envelope = attack * decay
+                    let noteVolume = 0.08 * exp(-Double(index) * 0.3)
 
-                        let fundamental = sin(2.0 * .pi * freq * t)
-                        let harmonic1 = 0.3 * sin(2.0 * .pi * freq * 2 * t)
-                        let harmonic2 = 0.1 * sin(2.0 * .pi * freq * 3 * t)
+                    let noteT = localT - (chordDuration - transitionTime)
+                    let attack = min(1.0, noteT / 1.5)
+                    let decay = exp(-noteT / 6.0)
+                    let envelope = attack * decay
 
-                        sample += 0.12 * envelope * (fundamental + harmonic1 + harmonic2) * crossfade
-                    }
+                    let triangle = 2.0 * abs(2.0 * (freq * t / 1.0).truncatingRemainder(dividingBy: 1.0) - 0.5) - 1.0
+                    let sine = sin(2.0 * .pi * freq * t)
+                    let wave = 0.6 * triangle + 0.4 * sine
+
+                    let vibrato = 1.0 + 0.002 * sin(2.0 * .pi * 4.0 * t)
+                    let note = wave * vibrato * envelope * noteVolume * crossfade
+
+                    sample += note
                 }
             }
 
-            // 添加轻微的低频铺垫音（增加氛围感）
-            let padFreq = chord[0] / 2  // 低八度
-            let pad = 0.08 * sin(2.0 * .pi * padFreq * t) * sin(.pi * localT / chordDuration)
-            sample += pad
+            // 添加高频"闪烁"效果（像星星一样）
+            let sparkleFreq = 880.0 + 440.0 * sin(2.0 * .pi * 0.5 * t)  // 轻微变化
+            let sparkle = 0.02 * sin(2.0 * .pi * sparkleFreq * t) * (0.5 + 0.5 * sin(2.0 * .pi * 2.0 * t))
+            sample += sparkle
 
-            // 添加轻微的颤音效果
-            let vibrato = 1.0 + 0.003 * sin(2.0 * .pi * 5.5 * t)
-            sample *= vibrato
+            // 添加轻微的"呼吸"效果（音量缓慢变化）
+            let breath = 0.8 + 0.2 * sin(2.0 * .pi * 0.25 * t)
+            sample *= breath
 
             // 归一化并转换为16位整数
-            let normalizedSample = max(-1.0, min(1.0, sample * 0.7))
+            let normalizedSample = max(-1.0, min(1.0, sample * 0.5))
             let intSample = Int16(normalizedSample * 32767)
 
             var bytes = withUnsafeBytes(of: intSample.littleEndian) { Array($0) }
@@ -314,7 +374,7 @@ class ConversationManager: ObservableObject {
         do {
             let player = try AVAudioPlayer(data: wavData)
             player.numberOfLoops = -1
-            player.volume = 0.6  // 提高思考音效音量
+            player.volume = 0.35  // 降低音量，更柔和
             return player
         } catch {
             NSLog("❌ 创建思考音效失败: \(error)")
@@ -432,6 +492,11 @@ class ConversationManager: ObservableObject {
     func clearHistory() {
         messages = []
         saveMessages()
+
+        // 同时清空服务端会话
+        Task {
+            try? await kittyService.clearSession()
+        }
     }
 
     /// 设置静音状态
@@ -443,6 +508,30 @@ class ConversationManager: ObservableObject {
             // 静音时清空当前收集的音频
             audioBuffer = Data()
             audioDataCount = 0
+        }
+    }
+
+    /// 切换扬声器模式
+    func setSpeakerMode(_ speaker: Bool) {
+        NSLog("🔊 切换扬声器: \(speaker ? "扬声器" : "听筒")")
+
+        // 更新状态
+        isSpeakerOn = speaker
+
+        let audioSession = AVAudioSession.sharedInstance()
+
+        do {
+            // 只使用 overrideOutputAudioPort，路由变化通知会触发恢复播放
+            if speaker {
+                try audioSession.overrideOutputAudioPort(.speaker)
+            } else {
+                try audioSession.overrideOutputAudioPort(.none)
+            }
+
+            let route = audioSession.currentRoute
+            NSLog("   ✓ 输出: \(route.outputs.first?.portName ?? "未知")")
+        } catch {
+            NSLog("   ❌ 切换失败: \(error)")
         }
     }
 
@@ -886,7 +975,8 @@ class ConversationManager: ObservableObject {
 
             var fullReply = ""
 
-            try await kittyService.chatStream(text, history: history) { [weak self] chunk in
+            let selectedModel = UserDefaults.standard.string(forKey: "selectedModel")
+            try await kittyService.chatStream(text, history: history, model: selectedModel) { [weak self] chunk in
                 guard let self = self, !self.isCancelled, !Task.isCancelled, self.isInCall else { return }
 
                 fullReply += chunk
@@ -968,6 +1058,9 @@ class ConversationManager: ObservableObject {
     // MARK: - Audio Playback
 
     private func playAudioAndWait(_ data: Data) async {
+        // 保存音频数据（用于切换扬声器后恢复）
+        currentAudioData = data
+
         // 不切换音频模式，保持 voiceChat 配置
         // 这确保蓝牙路由不会丢失
         let audioSession = AVAudioSession.sharedInstance()
@@ -986,6 +1079,7 @@ class ConversationManager: ObservableObject {
                     self.audioPlayerDelegate = AudioPlayerDelegate(onFinish: { [weak self] in
                         guard let self = self, !isResumed else { return }
                         isResumed = true
+                        self.currentAudioData = nil  // 播放完成，清除数据
                         self.playbackContinuation = nil
                         continuation.resume()
                     })
@@ -1002,11 +1096,13 @@ class ConversationManager: ObservableObject {
                         self.playbackContinuation = continuation
                     } else {
                         isResumed = true
+                        self.currentAudioData = nil
                         self.audioPlayerDelegate = nil
                         continuation.resume()
                     }
                 } catch {
                     NSLog("❌ 播放音频失败: \(error)")
+                    self.currentAudioData = nil
                     continuation.resume()
                 }
             }

@@ -89,6 +89,7 @@ class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = "default"
     history: list = []
+    model: Optional[str] = None
 
 
 class TTSRequest(BaseModel):
@@ -153,7 +154,7 @@ async def chat(req: ChatRequest):
                     "x-openclaw-scopes": "operator.write,operator.read",
                 },
                 json={
-                    "model": "openclaw/main",
+                    "model": req.model or "openclaw/main",
                     "messages": messages,
                     "stream": True,
                     "session_id": "main",
@@ -196,6 +197,19 @@ async def clear_session(session_id: str):
         del sessions[session_id]
         return {"status": "cleared", "session_id": session_id}
     return {"status": "not_found", "session_id": session_id}
+
+
+@app.get("/models")
+async def list_models():
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(
+            f"{OPENCLAW_URL}/v1/models",
+            headers={
+                "Authorization": f"Bearer {OPENCLAW_TOKEN}",
+                "x-openclaw-scopes": "operator.write,operator.read",
+            },
+        )
+        return response.json()
 
 
 @app.post("/tts")

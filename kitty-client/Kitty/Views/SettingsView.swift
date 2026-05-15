@@ -5,6 +5,8 @@ struct SettingsView: View {
 
     @AppStorage("serverURL") private var serverURL = "http://localhost:8081"
     @AppStorage("selectedVoice") private var selectedVoice: String = VoiceType.uranus.rawValue
+    @AppStorage("selectedModel") private var selectedModel: String = "openclaw/main"
+    @State private var availableModels: [ModelInfo] = []
 
     var body: some View {
         NavigationView {
@@ -18,6 +20,21 @@ struct SettingsView: View {
                             .foregroundColor(.secondary)
                             .autocapitalization(.none)
                             .autocorrectionDisabled()
+                    }
+                }
+
+                Section("模型设置") {
+                    Picker("模型", selection: $selectedModel) {
+                        ForEach(availableModels) { model in
+                            Text(model.displayName).tag(model.id)
+                        }
+                    }
+                    .onAppear {
+                        Task {
+                            if let models = try? await KittyService.shared.fetchModels() {
+                                availableModels = models
+                            }
+                        }
                     }
                 }
 

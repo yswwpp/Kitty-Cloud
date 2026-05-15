@@ -12,7 +12,7 @@ class KittyService: ObservableObject {
         if let savedURL = UserDefaults.standard.string(forKey: "serverURL"), !savedURL.isEmpty {
             // 真机上：如果地址包含旧地址，更新为正确地址
             #if !targetEnvironment(simulator)
-            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") || savedURL.contains("192.168.") {
+            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") || savedURL.contains("192.168.") || savedURL.contains(":8080") {
                 let newURL = "http://10.8.0.122:8081"
                 UserDefaults.standard.set(newURL, forKey: "serverURL")
                 return newURL
@@ -22,7 +22,7 @@ class KittyService: ObservableObject {
         }
         // 默认地址
         #if targetEnvironment(simulator)
-        return "http://localhost:8080"
+        return "http://localhost:8081"
         #else
         return "http://10.8.0.122:8081"
         #endif
@@ -35,7 +35,7 @@ class KittyService: ObservableObject {
         // 启动时更新旧的服务器地址
         #if !targetEnvironment(simulator)
         if let savedURL = UserDefaults.standard.string(forKey: "serverURL") {
-            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") || savedURL.contains("192.168.") {
+            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") || savedURL.contains("192.168.") || savedURL.contains(":8080") {
                 UserDefaults.standard.set("http://10.8.0.122:8081", forKey: "serverURL")
             }
         }
@@ -105,8 +105,11 @@ class KittyService: ObservableObject {
 
     // MARK: - Chat
 
-    func chatStream(_ message: String, history: [[String: String]], onChunk: @escaping (String) -> Void) async throws {
-        let request: [String: Any] = ["message": message, "history": history]
+    func chatStream(_ message: String, history: [[String: String]], model: String? = nil, onChunk: @escaping (String) -> Void) async throws {
+        var request: [String: Any] = ["message": message, "history": history]
+        if let model = model {
+            request["model"] = model
+        }
 
         guard let url = URL(string: "\(serverURL)/chat") else {
             throw KittyError.invalidURL("\(serverURL)/chat")
@@ -242,6 +245,71 @@ class KittyService: ObservableObject {
     func stopSpeaking() {
         audioPlayer?.stop()
         audioPlayer = nil
+    }
+
+    // MARK: - Models
+
+    func fetchModels() async throws -> [ModelInfo] {
+        guard let url = URL(string: "\(serverURL)/models") else {
+            throw KittyError.invalidURL("\(serverURL)/models")
+        }
+
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "GET"
+        urlRequest.timeoutInterval = 15
+
+        let (data, response) = try await session.data(for: urlRequest)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw KittyError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let modelData = json["data"] as? [[String: Any]] else {
+                throw KittyError.invalidResponse
+            }
+            return modelData.compactMap { item -> ModelInfo? in
+                guard let id = item["id"] as? String else { return nil }
+                return ModelInfo(id: id, ownedBy: item["owned_by"] as? String ?? "")
+            }
+        case 401, 403:
+            throw KittyError.unauthorized
+        case 500...599:
+            throw KittyError.serverError(httpResponse.statusCode)
+        default:
+            throw KittyError.httpError(httpResponse.statusCode)
+        }
+    }
+
+    // MARK: - Session
+
+    func clearSession(sessionId: String = "default") async throws {
+        guard let url = URL(string: "\(serverURL)/session/\(sessionId)") else {
+            throw KittyError.invalidURL("\(serverURL)/session/\(sessionId)")
+        }
+
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "DELETE"
+        urlRequest.timeoutInterval = 15
+
+        let (_, response) = try await session.data(for: urlRequest)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw KittyError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            return
+        case 401, 403:
+            throw KittyError.unauthorized
+        case 500...599:
+            throw KittyError.serverError(httpResponse.statusCode)
+        default:
+            throw KittyError.httpError(httpResponse.statusCode)
+        }
     }
 
     // MARK: - Server Test

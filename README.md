@@ -45,7 +45,7 @@ Kitty-Cloud/
 
 ### 1. 配置火山引擎凭证
 
-编辑 `Kitty/Config/APIConfig.swift`：
+编辑 `kitty-client/Kitty/Config/APIConfig.swift`：
 
 ```swift
 struct VolcConfig {
@@ -61,14 +61,14 @@ struct ServerConfig {
 ### 2. 安装依赖
 
 ```bash
-cd Kitty
+cd kitty-client
 pod install
 ```
 
 ### 3. 打开并运行
 
 ```bash
-open Kitty.xcworkspace
+open kitty-client/Kitty.xcworkspace
 ```
 
 在 Xcode 中：

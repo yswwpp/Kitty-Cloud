@@ -9,6 +9,15 @@ struct ServerConfig {
     #endif
 }
 
+struct ModelInfo: Identifiable, Hashable {
+    let id: String
+    let ownedBy: String
+
+    var displayName: String {
+        id.components(separatedBy: "/").last ?? id
+    }
+}
+
 enum VoiceType: String, CaseIterable {
     case uranus = "zh_female_vv_uranus_bigtts"
     case gentle = "BV001_streaming"

@@ -5,8 +5,12 @@ struct CallView: View {
     @StateObject private var manager = ConversationManager()
     @State private var showingSettings = false
     @State private var showingHistory = false
-    @State private var isSpeakerOn = true
     @State private var isMuted = false
+
+    @AppStorage("selectedModel") private var selectedModel: String = "openclaw/main"
+    @State private var showingModelPicker = false
+    @State private var availableModels: [ModelInfo] = []
+    @State private var showingResetAlert = false
 
     var body: some View {
         NavigationView {
@@ -33,6 +37,14 @@ struct CallView: View {
                         Image(systemName: "clock.arrow.circlepath")
                     }
                 }
+                ToolbarItem(placement: .principal) {
+                    if manager.state != .idle {
+                        Button(action: { showingResetAlert = true }) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .foregroundColor(.orange)
+                        }
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape")
@@ -47,6 +59,14 @@ struct CallView: View {
                     manager.clearHistory()
                 })
             }
+            .alert("重置对话", isPresented: $showingResetAlert) {
+                Button("取消", role: .cancel) { }
+                Button("重置", role: .destructive) {
+                    manager.clearHistory()
+                }
+            } message: {
+                Text("确定要清空当前对话记录吗？这将同时清除服务器端会话。")
+            }
         }
     }
 
@@ -59,6 +79,38 @@ struct CallView: View {
             Text(manager.state.rawValue)
                 .font(.headline)
                 .foregroundColor(.secondary)
+
+            // 模型快速切换（仅空闲时显示）
+            if manager.state == .idle {
+                Button(action: {
+                    Task {
+                        if let models = try? await KittyService.shared.fetchModels() {
+                            availableModels = models
+                        }
+                        showingModelPicker = true
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "cpu")
+                            .font(.caption2)
+                        Text(selectedModel.components(separatedBy: "/").last ?? selectedModel)
+                            .font(.caption2)
+                    }
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(8)
+                }
+                .confirmationDialog("选择模型", isPresented: $showingModelPicker, titleVisibility: .visible) {
+                    ForEach(availableModels) { model in
+                        Button(model.displayName) {
+                            selectedModel = model.id
+                        }
+                    }
+                    Button("取消", role: .cancel) {}
+                }
+            }
         }
     }
 
@@ -91,16 +143,15 @@ struct CallView: View {
         HStack(spacing: 40) {
             // 扬声器切换按钮
             Button(action: {
-                isSpeakerOn.toggle()
-                setSpeakerMode(isSpeakerOn)
+                manager.setSpeakerMode(!manager.isSpeakerOn)
             }) {
                 VStack(spacing: 4) {
-                    Image(systemName: isSpeakerOn ? "speaker.wave.3.fill" : "speaker.fill")
+                    Image(systemName: manager.isSpeakerOn ? "speaker.wave.3.fill" : "speaker.fill")
                         .font(.title2)
-                    Text(isSpeakerOn ? "扬声器" : "听筒")
+                    Text(manager.isSpeakerOn ? "扬声器" : "听筒")
                         .font(.caption2)
                 }
-                .foregroundColor(isSpeakerOn ? .blue : .gray)
+                .foregroundColor(manager.isSpeakerOn ? .blue : .gray)
                 .frame(width: 60, height: 60)
                 .background(Color.gray.opacity(0.15))
                 .cornerRadius(30)
@@ -124,33 +175,6 @@ struct CallView: View {
             }
         }
         .padding(.top, 8)
-    }
-
-    private func setSpeakerMode(_ speaker: Bool) {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            if speaker {
-                // 扬声器模式：使用 default 模式 + 强制扬声器
-                try session.setCategory(
-                    .playAndRecord,
-                    mode: .default,
-                    options: [.defaultToSpeaker, .mixWithOthers]
-                )
-                try session.overrideOutputAudioPort(.speaker)
-                NSLog("🔊 切换到扬声器模式（高音量）")
-            } else {
-                // 听筒/蓝牙模式
-                try session.setCategory(
-                    .playAndRecord,
-                    mode: .voiceChat,
-                    options: [.allowBluetooth, .mixWithOthers]
-                )
-                NSLog("🔊 切换到听筒/蓝牙模式")
-            }
-            try session.setActive(true)
-        } catch {
-            NSLog("❌ 切换扬声器失败: \(error)")
-        }
     }
 
     private var testServerButton: some View {
