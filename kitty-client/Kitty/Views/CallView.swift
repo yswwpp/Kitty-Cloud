@@ -3,6 +3,7 @@ import AVFoundation
 
 struct CallView: View {
     @StateObject private var manager = ConversationManager()
+    @ObservedObject private var messageStore = MessageStore.shared
     @State private var showingSettings = false
     @State private var showingHistory = false
     @State private var isMuted = false
@@ -64,7 +65,7 @@ struct CallView: View {
                 SettingsView()
             }
             .sheet(isPresented: $showingHistory) {
-                HistoryView(messages: manager.messages, onClear: {
+                HistoryView(messages: messageStore.messages, onClear: {
                     manager.clearHistory()
                 })
             }

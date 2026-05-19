@@ -1,8 +1,10 @@
 import Foundation
 import AVFoundation
+import os.log
 
 class KittyService: ObservableObject {
     static let shared = KittyService()
+    private let logger = Logger(subsystem: "com.kitty.app", category: "KittyService")
 
     @Published var isLoading = false
     @Published var errorMessage: String?
@@ -41,22 +43,27 @@ class KittyService: ObservableObject {
         }
         #endif
 
-        let config = URLSessionConfiguration.default
+        // 使用 ephemeral 配置，完全绕过系统代理和缓存
+        let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 120
         config.timeoutIntervalForResource = 180
-        config.waitsForConnectivity = true
+        config.waitsForConnectivity = false
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         self.session = URLSession(configuration: config)
+        print("🔧 [KittyService] URLSession配置完成(ephemeral)，代理已禁用")
     }
 
     // MARK: - ASR
 
     func recognizeSpeech(audioData: Data) async throws -> String {
         print("🌐 服务器地址: \(serverURL)")
+        logger.info("🌐 ASR服务器地址: \(self.serverURL)")
         let base64Audio = audioData.base64EncodedString()
         let request = ["audio": base64Audio, "format": "wav"]
 
         let urlString = "\(serverURL)/asr"
         print("📤 请求 URL: \(urlString)")
+        logger.info("📤 ASR请求 URL: \(urlString)")
 
         guard let url = URL(string: urlString) else {
             print("❌ URL 无效")
@@ -105,13 +112,82 @@ class KittyService: ObservableObject {
 
     // MARK: - Chat
 
+    /// 非流式聊天请求 - 返回完整响应（绕过代理缓冲问题）
+    func chatComplete(_ message: String, history: [[String: String]], model: String? = nil) async throws -> String {
+        var request: [String: Any] = [
+            "message": message,
+            "history": history,
+            "stream": false  // 关键：使用非流式模式
+        ]
+        if let model = model {
+            request["model"] = model
+        }
+
+        logger.info("🌐 [chatComplete] 发送非流式请求: \(message)")
+        print("🌐 [chatComplete] 发送非流式请求，绕过代理缓冲")
+
+        guard let url = URL(string: "\(serverURL)/chat") else {
+            throw KittyError.invalidURL("\(serverURL)/chat")
+        }
+
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.timeoutInterval = 120
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: request)
+
+        do {
+            let (data, response) = try await session.data(for: urlRequest)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw KittyError.invalidResponse
+            }
+
+            logger.info("🌐 [chatComplete] 响应状态码: \(httpResponse.statusCode)")
+            print("🌐 [chatComplete] 收到响应: \(httpResponse.statusCode)")
+
+            switch httpResponse.statusCode {
+            case 200:
+                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let content = json["content"] as? String else {
+                    throw KittyError.invalidResponse
+                }
+                logger.info("✅ [chatComplete] 获取完整响应: \(content.count)字符")
+                print("✅ [chatComplete] 成功获取完整响应")
+                return content
+            case 401, 403:
+                throw KittyError.unauthorized
+            case 500...599:
+                throw KittyError.serverError(httpResponse.statusCode)
+            default:
+                throw KittyError.httpError(httpResponse.statusCode)
+            }
+        } catch let error as KittyError {
+            throw error
+        } catch {
+            if (error as NSError).code == NSURLErrorTimedOut {
+                throw KittyError.timeout
+            } else if (error as NSError).code == NSURLErrorNotConnectedToInternet ||
+                      (error as NSError).code == NSURLErrorNetworkConnectionLost {
+                throw KittyError.networkError
+            }
+            throw KittyError.serverError(0)
+        }
+    }
+
     func chatStream(_ message: String, history: [[String: String]], model: String? = nil, onChunk: @escaping (String) -> Void) async throws {
         var request: [String: Any] = ["message": message, "history": history]
         if let model = model {
             request["model"] = model
         }
 
+        print("🌐 [KittyService] 准备发送聊天请求")
+        print("🌐 [KittyService] URL: \(serverURL)/chat")
+        print("🌐 [KittyService] Message: \(message)")
+        print("🌐 [KittyService] Model: \(model ?? "default")")
+
         guard let url = URL(string: "\(serverURL)/chat") else {
+            print("❌ [KittyService] URL无效")
             throw KittyError.invalidURL("\(serverURL)/chat")
         }
 
@@ -121,28 +197,41 @@ class KittyService: ObservableObject {
         urlRequest.timeoutInterval = 120  // 流式对话可能较长
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: request)
 
+        print("🌐 [KittyService] 发送请求...")
         do {
             let (bytes, response) = try await session.bytes(for: urlRequest)
 
             guard let httpResponse = response as? HTTPURLResponse else {
+                print("❌ [KittyService] 无效响应类型")
                 throw KittyError.invalidResponse
             }
+
+            print("🌐 [KittyService] 响应状态码: \(httpResponse.statusCode)")
 
             switch httpResponse.statusCode {
             case 200:
                 break
             case 401, 403:
+                print("❌ [KittyService] 认证失败")
                 throw KittyError.unauthorized
             case 500...599:
+                print("❌ [KittyService] 服务器错误: \(httpResponse.statusCode)")
                 throw KittyError.serverError(httpResponse.statusCode)
             default:
+                print("❌ [KittyService] HTTP错误: \(httpResponse.statusCode)")
                 throw KittyError.httpError(httpResponse.statusCode)
             }
 
+            print("🌐 [KittyService] 开始读取流式数据...")
+            var lineCount = 0
             for try await line in bytes.lines {
+                lineCount += 1
+                print("🌐 [KittyService] Line \(lineCount): \(line)")
+
                 if line.hasPrefix("data: ") {
                     let dataStr = String(line.dropFirst(6))
                     if dataStr == "[DONE]" {
+                        print("✅ [KittyService] 收到结束标志")
                         break
                     }
                     if let data = dataStr.data(using: .utf8),
@@ -150,16 +239,23 @@ class KittyService: ObservableObject {
                        let choices = json["choices"] as? [[String: Any]],
                        let delta = choices.first?["delta"] as? [String: Any],
                        let content = delta["content"] as? String {
+                        print("📥 [KittyService] 解析到content: \(content)")
                         onChunk(content)
+                    } else {
+                        print("⚠️ [KittyService] 无法解析line: \(line)")
                     }
                 } else if !line.isEmpty {
                     // 兼容非 SSE 格式的响应
+                    print("📥 [KittyService] 非SSE格式line: \(line)")
                     onChunk(line)
                 }
             }
+            print("✅ [KittyService] 流式读取完成，共\(lineCount)行")
         } catch let error as KittyError {
+            print("❌ [KittyService] KittyError: \(error)")
             throw error
         } catch {
+            print("❌ [KittyService] 其他错误: \(error)")
             if (error as NSError).code == NSURLErrorTimedOut {
                 throw KittyError.timeout
             } else if (error as NSError).code == NSURLErrorNotConnectedToInternet ||

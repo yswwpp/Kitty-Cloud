@@ -7,7 +7,17 @@ struct KittyApp: App {
 
     var body: some Scene {
         WindowGroup {
-            CallView()
+            TabView {
+                CallView()
+                    .tabItem {
+                        Label("通话", systemImage: "phone.fill")
+                    }
+
+                ChatView()
+                    .tabItem {
+                        Label("聊天", systemImage: "message.fill")
+                    }
+            }
         }
     }
 }

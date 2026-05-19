@@ -5,6 +5,7 @@ import gzip
 import struct
 import base64
 import os
+import time
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse, Response
@@ -90,6 +91,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = "default"
     history: list = []
     model: Optional[str] = None
+    stream: Optional[bool] = True
 
 
 class TTSRequest(BaseModel):
@@ -142,6 +144,35 @@ async def chat(req: ChatRequest):
     messages = [{"role": "system", "content": VOICE_SYSTEM_PROMPT}]
     messages.extend(session["messages"][-MAX_HISTORY_LENGTH:])
 
+    # 根据stream参数选择响应模式
+    if req.stream == False:
+        # 非流式模式：返回完整JSON响应（绕过代理缓冲问题）
+        full_response = ""
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(
+                f"{OPENCLAW_URL}/v1/chat/completions",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {OPENCLAW_TOKEN}",
+                    "x-openclaw-scopes": "operator.write,operator.read",
+                },
+                json={
+                    "model": req.model or "openclaw/main",
+                    "messages": messages,
+                    "stream": False,
+                    "session_id": "main",
+                },
+                timeout=120,
+            )
+            result = response.json()
+            if "choices" in result and len(result["choices"]) > 0:
+                full_response = result["choices"][0]["message"].get("content", "")
+
+        session["messages"].append({"role": "assistant", "content": full_response})
+        session["messages"] = session["messages"][-MAX_HISTORY_LENGTH:]
+        return {"role": "assistant", "content": full_response}
+
+    # 流式模式：返回SSE流
     async def generate():
         full_response = ""
         async with httpx.AsyncClient(timeout=120) as client:
@@ -164,19 +195,21 @@ async def chat(req: ChatRequest):
                     if line.startswith("data: "):
                         data = line[6:]
                         if data == "[DONE]":
+                            yield "data: [DONE]\n\n"
                             break
                         try:
                             chunk = json.loads(data)
                             if content := chunk["choices"][0]["delta"].get("content"):
                                 full_response += content
-                                yield content
+                                # 返回 SSE 格式
+                                yield f"data: {json.dumps({'choices': [{'delta': {'content': content}}]})}\n\n"
                         except:
                             pass
 
         session["messages"].append({"role": "assistant", "content": full_response})
         session["messages"] = session["messages"][-MAX_HISTORY_LENGTH:]
 
-    return StreamingResponse(generate(), media_type="text/plain")
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.get("/session/{session_id}")
@@ -199,34 +232,112 @@ async def clear_session(session_id: str):
     return {"status": "not_found", "session_id": session_id}
 
 
-# 可用模型列表（直接定义，不依赖 OpenClaw API）
-AVAILABLE_MODELS = [
-    {"id": "bailian/qwen3.6-plus", "name": "Qwen3.6 Plus", "desc": "阿里通义千问，支持图文"},
-    {"id": "bailian/qwen3.5-plus", "name": "Qwen3.5 Plus", "desc": "阿里通义千问，支持图文"},
-    {"id": "bailian/glm-5", "name": "GLM 5", "desc": "智谱 GLM"},
-    {"id": "bailian/kimi-k2.5", "name": "Kimi K2.5", "desc": "月之暗面 Kimi"},
-    {"id": "qianfan/deepseek-v4-flash", "name": "DeepSeek V4 Flash", "desc": "DeepSeek 快速版"},
-    {"id": "qianfan/glm-5.1", "name": "GLM 5.1", "desc": "智谱最新版"},
-]
+# 模型列表缓存
+_models_cache: dict = {"data": [], "cached_at": 0}
+_MODELS_CACHE_TTL = 300  # 缓存 5 分钟
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+async def fetch_models_from_openclaw() -> list:
+    """通过 OpenClaw WS RPC models.list 获取 provider 模型列表"""
+    try:
+        import hashlib
+        from nacl.signing import SigningKey
+        import websockets
+
+        ws_url = OPENCLAW_URL.replace("http://", "ws://").replace("https://", "wss://") + "/ws"
+        origin = OPENCLAW_URL
+
+        async with websockets.connect(
+            ws_url,
+            origin=origin,
+            additional_headers={"Authorization": f"Bearer {OPENCLAW_TOKEN}"},
+            open_timeout=10,
+        ) as ws:
+            # 1. 读取 challenge
+            resp = await asyncio.wait_for(ws.recv(), timeout=10)
+            challenge = json.loads(resp)
+            nonce = challenge["payload"]["nonce"]
+
+            # 2. 生成设备身份并签名
+            sk = SigningKey.generate()
+            pub_raw = bytes(sk.verify_key)
+            device_id = hashlib.sha256(pub_raw).hexdigest()
+            signed_at = int(time.time() * 1000)
+            msg = "|".join([
+                "v2", device_id, "openclaw-control-ui", "webchat", "operator",
+                "operator.write,operator.read", str(signed_at), OPENCLAW_TOKEN, nonce,
+            ])
+            sig = _b64url(sk.sign(msg.encode()).signature)
+
+            # 3. 发送 connect
+            await ws.send(json.dumps({
+                "type": "req", "id": "1", "method": "connect",
+                "params": {
+                    "minProtocol": 3, "maxProtocol": 3,
+                    "client": {"id": "openclaw-control-ui", "version": "1.0", "platform": "server", "mode": "webchat"},
+                    "role": "operator",
+                    "scopes": ["operator.write", "operator.read"],
+                    "device": {"id": device_id, "publicKey": _b64url(pub_raw), "signature": sig, "signedAt": signed_at, "nonce": nonce},
+                    "auth": {"token": OPENCLAW_TOKEN},
+                    "userAgent": "kitty-server/1.0", "locale": "zh-CN",
+                },
+            }))
+
+            # 4. 等待 connect 响应
+            for _ in range(20):
+                resp = await asyncio.wait_for(ws.recv(), timeout=10)
+                data = json.loads(resp)
+                if data.get("type") == "res" and data.get("id") == "1":
+                    if not data.get("ok"):
+                        print(f"[models] WS connect 失败: {data.get('error', {})}")
+                        return _models_cache["data"]
+                    # 5. 连接成功，请求模型列表
+                    await ws.send(json.dumps({
+                        "type": "req", "id": "2", "method": "models.list", "params": {},
+                    }))
+                    break
+
+            # 6. 等待 models.list 响应
+            for _ in range(20):
+                resp = await asyncio.wait_for(ws.recv(), timeout=10)
+                data = json.loads(resp)
+                if data.get("type") == "res" and data.get("id") == "2" and data.get("ok"):
+                    raw_models = data.get("payload", {}).get("models", [])
+                    result = []
+                    for m in raw_models:
+                        result.append({
+                            "id": f"{m['provider']}/{m['id']}",
+                            "object": "model",
+                            "created": 0,
+                            "owned_by": m["provider"],
+                            "display_name": m.get("name", m["id"]),
+                            "description": f"支持 {', '.join(m.get('input', ['text']))}",
+                            "context_window": m.get("contextWindow"),
+                            "max_tokens": m.get("maxTokens"),
+                        })
+                    if result:
+                        _models_cache["data"] = result
+                        _models_cache["cached_at"] = time.time()
+                    return result
+
+            return _models_cache["data"]
+
+    except Exception as e:
+        print(f"[models] 从 OpenClaw WS 获取模型列表失败: {e}")
+        return _models_cache["data"]
 
 
 @app.get("/models")
 async def list_models():
-    """返回可用模型列表"""
-    return {
-        "object": "list",
-        "data": [
-            {
-                "id": model["id"],
-                "object": "model",
-                "created": 0,
-                "owned_by": model["id"].split("/")[0],
-                "display_name": model["name"],
-                "description": model["desc"],
-            }
-            for model in AVAILABLE_MODELS
-        ],
-    }
+    """返回可用模型列表，从 OpenClaw WS 动态获取，带缓存"""
+    if _models_cache["data"] and (time.time() - _models_cache["cached_at"]) < _MODELS_CACHE_TTL:
+        return {"object": "list", "data": _models_cache["data"]}
+    models = await fetch_models_from_openclaw()
+    return {"object": "list", "data": models}
 
 
 @app.post("/tts")

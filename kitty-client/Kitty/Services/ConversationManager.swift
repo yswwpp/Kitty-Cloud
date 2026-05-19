@@ -2,29 +2,16 @@ import Foundation
 import AVFoundation
 import SwiftUI
 
-struct Message: Identifiable, Codable {
-    let id: UUID
-    let role: String
-    let content: String
-    let timestamp: Date
-
-    init(role: String, content: String) {
-        self.id = UUID()
-        self.role = role
-        self.content = content
-        self.timestamp = Date()
-    }
-}
-
 class ConversationManager: ObservableObject {
     @Published var state: ConversationState = .idle
     @Published var userText: String = ""
     @Published var assistantText: String = ""
     @Published var errorMessage: String?
     @Published var audioLevel: Float = 0
-    @Published var messages: [Message] = []
     @Published var callDuration: Int = 0  // 通话时长（秒）
     @Published var isSpeakerOn: Bool = true  // 扬声器状态（供 UI 绑定）
+
+    let messageStore = MessageStore.shared
 
     enum ConversationState: String {
         case idle = "待机"
@@ -41,7 +28,6 @@ class ConversationManager: ObservableObject {
     private var isRecording = false
 
     private let maxHistoryCount = 20
-    private let messagesKey = "kitty_messages"
 
     // 用于等待音频播放完成
     private var audioPlayer: AVAudioPlayer?
@@ -85,7 +71,6 @@ class ConversationManager: ObservableObject {
     private var stateBeforeInterruption: ConversationState = .idle
 
     init() {
-        loadMessages()
         setupThinkingSound()
         setupAudioSessionInterruptionObserver()
     }
@@ -490,13 +475,7 @@ class ConversationManager: ObservableObject {
 
     /// 清空历史消息
     func clearHistory() {
-        messages = []
-        saveMessages()
-
-        // 同时清空服务端会话
-        Task {
-            try? await kittyService.clearSession()
-        }
+        messageStore.clearMessages()
     }
 
     /// 设置静音状态
@@ -967,7 +946,7 @@ class ConversationManager: ObservableObject {
 
             // 添加用户消息
             await MainActor.run {
-                self.messages.append(Message(role: "user", content: text))
+                self.messageStore.addMessage(role: "user", content: text)
             }
 
             // 构建历史上下文
@@ -1000,8 +979,7 @@ class ConversationManager: ObservableObject {
 
                 // 添加助手消息
                 await MainActor.run {
-                    self.messages.append(Message(role: "assistant", content: fullReply))
-                    self.saveMessages()
+                    self.messageStore.addMessage(role: "assistant", content: fullReply)
                     self.state = .speaking
                 }
 
@@ -1126,21 +1104,8 @@ class ConversationManager: ObservableObject {
     // MARK: - History Management
 
     private func buildChatHistory() -> [[String: String]] {
-        let recentMessages = messages.suffix(maxHistoryCount)
+        let recentMessages = messageStore.messages.suffix(maxHistoryCount)
         return recentMessages.map { ["role": $0.role, "content": $0.content] }
-    }
-
-    private func saveMessages() {
-        guard let data = try? JSONEncoder().encode(messages) else { return }
-        UserDefaults.standard.set(data, forKey: messagesKey)
-    }
-
-    private func loadMessages() {
-        guard let data = UserDefaults.standard.data(forKey: messagesKey),
-              let savedMessages = try? JSONDecoder().decode([Message].self, from: data) else {
-            return
-        }
-        messages = savedMessages
     }
 }
 
