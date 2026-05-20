@@ -138,11 +138,10 @@ async def chat(req: ChatRequest):
     messages = [{"role": "system", "content": VOICE_SYSTEM_PROMPT}]
     messages.extend(session["messages"][-MAX_HISTORY_LENGTH:])
 
-    # 构建通用请求头，通过 x-openclaw-model 切换模型
+    # 构建通用请求头
     openclaw_headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {OPENCLAW_TOKEN}",
-        "x-openclaw-scopes": "operator.write,operator.read",
     }
     if req.model:
         openclaw_headers["x-openclaw-model"] = req.model
@@ -163,6 +162,22 @@ async def chat(req: ChatRequest):
                 timeout=120,
             )
             result = response.json()
+            # 如果模型切换失败，去掉 x-openclaw-model 重试
+            if "error" in result and req.model:
+                print(f"[chat] 模型 {req.model} 失败: {result['error']}, 使用默认模型重试")
+                retry_headers = {k: v for k, v in openclaw_headers.items() if k != "x-openclaw-model"}
+                response = await client.post(
+                    f"{OPENCLAW_URL}/v1/chat/completions",
+                    headers=retry_headers,
+                    json={
+                        "model": "openclaw/main",
+                        "messages": messages,
+                        "stream": False,
+                        "session_id": "main",
+                    },
+                    timeout=120,
+                )
+                result = response.json()
             print(f"[chat] OpenClaw 非流式响应: {result}")
             if "choices" in result and len(result["choices"]) > 0:
                 full_response = result["choices"][0]["message"].get("content", "")
@@ -196,6 +211,9 @@ async def chat(req: ChatRequest):
                             break
                         try:
                             chunk = json.loads(data)
+                            if "error" in chunk:
+                                print(f"[chat] 流式错误: {chunk['error']}")
+                                break
                             if content := chunk["choices"][0]["delta"].get("content"):
                                 full_response += content
                                 yield f"data: {json.dumps({'choices': [{'delta': {'content': content}}]})}\n\n"
@@ -278,7 +296,7 @@ async def fetch_models_from_openclaw() -> list:
                     "role": "operator",
                     "scopes": ["operator.write", "operator.read"],
                     "device": {"id": device_id, "publicKey": _b64url(pub_raw), "signature": sig, "signedAt": signed_at, "nonce": nonce},
-                    "auth": {"token": OPENCLAW_TOKEN},
+                    "auth": {"password": OPENCLAW_TOKEN},
                     "userAgent": "kitty-server/1.0", "locale": "zh-CN",
                 },
             }))
@@ -327,12 +345,21 @@ async def fetch_models_from_openclaw() -> list:
         return _models_cache["data"]
 
 
+# 硬编码模型列表（WS 获取失败时回退）
+_FALLBACK_MODELS = [
+    {"id": "bailian/qwen3.6-plus", "object": "model", "created": 0, "owned_by": "bailian", "display_name": "Qwen3.6 Plus", "context_window": 131072},
+    {"id": "bailian/glm-5", "object": "model", "created": 0, "owned_by": "bailian", "display_name": "GLM-5", "context_window": 131072},
+]
+
+
 @app.get("/models")
 async def list_models():
     """返回可用模型列表，从 OpenClaw WS 动态获取，带缓存"""
     if _models_cache["data"] and (time.time() - _models_cache["cached_at"]) < _MODELS_CACHE_TTL:
         return {"object": "list", "data": _models_cache["data"]}
     models = await fetch_models_from_openclaw()
+    if not models:
+        return {"object": "list", "data": _FALLBACK_MODELS}
     return {"object": "list", "data": models}
 
 
