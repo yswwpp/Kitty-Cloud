@@ -147,6 +147,8 @@ async def chat(req: ChatRequest):
     # 根据stream参数选择响应模式
     if req.stream == False:
         # 非流式模式：返回完整JSON响应（绕过代理缓冲问题）
+        # 注意：HTTP chat completions 只接受 openclaw 或 openclaw/<agentId> 格式
+        # 客户端的 provider/model 格式用于 WS RPC，HTTP 请求用默认模型
         full_response = ""
         async with httpx.AsyncClient(timeout=120) as client:
             response = await client.post(
@@ -157,7 +159,7 @@ async def chat(req: ChatRequest):
                     "x-openclaw-scopes": "operator.write,operator.read",
                 },
                 json={
-                    "model": req.model or "openclaw/main",
+                    "model": "openclaw/main",  # HTTP API 必须使用 openclaw 格式
                     "messages": messages,
                     "stream": False,
                     "session_id": "main",
@@ -165,14 +167,18 @@ async def chat(req: ChatRequest):
                 timeout=120,
             )
             result = response.json()
+            print(f"[chat] OpenClaw 非流式响应: {result}")
             if "choices" in result and len(result["choices"]) > 0:
                 full_response = result["choices"][0]["message"].get("content", "")
+            elif "error" in result:
+                print(f"[chat] OpenClaw 错误: {result['error']}")
 
         session["messages"].append({"role": "assistant", "content": full_response})
         session["messages"] = session["messages"][-MAX_HISTORY_LENGTH:]
         return {"role": "assistant", "content": full_response}
 
     # 流式模式：返回SSE流
+    # 注意：HTTP chat completions 只接受 openclaw 或 openclaw/<agentId> 格式
     async def generate():
         full_response = ""
         async with httpx.AsyncClient(timeout=120) as client:
@@ -185,7 +191,7 @@ async def chat(req: ChatRequest):
                     "x-openclaw-scopes": "operator.write,operator.read",
                 },
                 json={
-                    "model": req.model or "openclaw/main",
+                    "model": "openclaw/main",  # HTTP API 必须使用 openclaw 格式
                     "messages": messages,
                     "stream": True,
                     "session_id": "main",
