@@ -14,8 +14,8 @@ class KittyService: ObservableObject {
         if let savedURL = UserDefaults.standard.string(forKey: "serverURL"), !savedURL.isEmpty {
             // 真机上：如果地址包含旧地址，更新为正确地址
             #if !targetEnvironment(simulator)
-            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") || savedURL.contains("192.168.") || savedURL.contains(":8080") {
-                let newURL = "http://10.8.0.122:8081"
+            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") || savedURL.contains(":8080") || savedURL.contains("10.8.0.") {
+                let newURL = "http://192.168.31.174:8081"
                 UserDefaults.standard.set(newURL, forKey: "serverURL")
                 return newURL
             }
@@ -26,7 +26,7 @@ class KittyService: ObservableObject {
         #if targetEnvironment(simulator)
         return "http://localhost:8081"
         #else
-        return "http://10.8.0.122:8081"
+        return "http://192.168.31.174:8081"
         #endif
     }
 
@@ -37,8 +37,8 @@ class KittyService: ObservableObject {
         // 启动时更新旧的服务器地址
         #if !targetEnvironment(simulator)
         if let savedURL = UserDefaults.standard.string(forKey: "serverURL") {
-            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") || savedURL.contains("192.168.") || savedURL.contains(":8080") {
-                UserDefaults.standard.set("http://10.8.0.122:8081", forKey: "serverURL")
+            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") || savedURL.contains(":8080") || savedURL.contains("10.8.0.") {
+                UserDefaults.standard.set("http://192.168.31.174:8081", forKey: "serverURL")
             }
         }
         #endif
