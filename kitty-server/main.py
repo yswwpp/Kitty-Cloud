@@ -13,29 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import websockets
-import re
-
-# Emoji 过滤正则（精确匹配常见 emoji 范围，避免误删中文标点）
-EMOJI_PATTERN = re.compile(
-    "["
-    "\U0001F600-\U0001F64F"  # emoticons
-    "\U0001F300-\U0001F5FF"  # symbols & pictographs
-    "\U0001F680-\U0001F6FF"  # transport & map
-    "\U0001F900-\U0001F9FF"  # Supplemental Symbols and Pictographs
-    "\U0001FA00-\U0001FAFF"  # Symbols and Pictographs Extended-A
-    "\U00002600-\U000026FF"  # Misc Symbols
-    "\U00002702-\U000027B0"  # Dingbats
-    "\U0000FE0F"             # Variation Selector-16
-    "\U0000200D"             # ZWJ
-    "\U0001F3FB-\U0001F3FF"  # Skin tone modifiers
-    "]+",
-    re.UNICODE
-)
-
-def strip_emojis(text: str) -> str:
-    """移除文本中的 emoji 字符，保留中文标点和文字"""
-    return EMOJI_PATTERN.sub("", text)
-
 app = FastAPI(title="Kitty Server", version="1.0.0")
 
 app.add_middleware(
@@ -190,9 +167,6 @@ async def chat(req: ChatRequest):
             elif "error" in result:
                 print(f"[chat] OpenClaw 错误: {result['error']}")
 
-        # 移除 emoji 和 Markdown 符号，保持纯文本口语化
-        full_response = strip_emojis(full_response)
-
         session["messages"].append({"role": "assistant", "content": full_response})
         session["messages"] = session["messages"][-MAX_HISTORY_LENGTH:]
         return {"role": "assistant", "content": full_response}
@@ -226,10 +200,8 @@ async def chat(req: ChatRequest):
                         try:
                             chunk = json.loads(data)
                             if content := chunk["choices"][0]["delta"].get("content"):
-                                cleaned = strip_emojis(content)
-                                if cleaned:
-                                    full_response += cleaned
-                                    yield f"data: {json.dumps({'choices': [{'delta': {'content': cleaned}}]})}\n\n"
+                                full_response += content
+                                yield f"data: {json.dumps({'choices': [{'delta': {'content': content}}]})}\n\n"
                         except:
                             pass
 

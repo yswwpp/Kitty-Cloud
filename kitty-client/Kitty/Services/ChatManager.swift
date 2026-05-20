@@ -1,5 +1,20 @@
 import Foundation
 
+// 扩展 Character 判断是否为 emoji
+extension Character {
+    var isEmoji: Bool {
+        guard let scalar = unicodeScalars.first else { return false }
+        return (scalar.value >= 0x1F600 && scalar.value <= 0x1F64F)  // emoticons
+            || (scalar.value >= 0x1F300 && scalar.value <= 0x1F5FF)  // symbols & pictographs
+            || (scalar.value >= 0x1F680 && scalar.value <= 0x1F6FF)  // transport & map
+            || (scalar.value >= 0x1F900 && scalar.value <= 0x1F9FF)  // supplemental
+            || (scalar.value >= 0x2600 && scalar.value <= 0x26FF)    // misc symbols
+            || (scalar.value >= 0x2700 && scalar.value <= 0x27BF)    // dingbats
+            || scalar.value == 0xFE0F  // variation selector
+            || scalar.value == 0x200D  // ZWJ
+    }
+}
+
 @MainActor
 class ChatManager: ObservableObject {
     let messageStore = MessageStore.shared
@@ -58,14 +73,14 @@ class ChatManager: ObservableObject {
             guard let self = self else { return }
 
             var displayed = ""
-            let characters = Array(text)
-
-            for char in characters {
+            // Swift 的 Character 是 grapheme cluster，emoji 不会被拆开
+            for char in text {
                 if Task.isCancelled { break }
                 displayed.append(char)
                 self.streamingText = displayed
-                // 每个字符延迟30-80毫秒，模拟真实打字
-                try? await Task.sleep(nanoseconds: UInt64.random(in: 30_000_000...80_000_000))
+                // emoji 显示稍慢，普通字符快速
+                let delay: UInt64 = char.isEmoji ? 150_000_000 : UInt64.random(in: 20_000_000...50_000_000)
+                try? await Task.sleep(nanoseconds: delay)
             }
         }
         await typingTask?.value
