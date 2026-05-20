@@ -138,22 +138,24 @@ async def chat(req: ChatRequest):
     messages = [{"role": "system", "content": VOICE_SYSTEM_PROMPT}]
     messages.extend(session["messages"][-MAX_HISTORY_LENGTH:])
 
+    # 构建通用请求头，通过 x-openclaw-model 切换模型
+    openclaw_headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENCLAW_TOKEN}",
+        "x-openclaw-scopes": "operator.write,operator.read",
+    }
+    if req.model:
+        openclaw_headers["x-openclaw-model"] = req.model
+
     # 根据stream参数选择响应模式
     if req.stream == False:
-        # 非流式模式：返回完整JSON响应（绕过代理缓冲问题）
-        # 注意：HTTP chat completions 只接受 openclaw 或 openclaw/<agentId> 格式
-        # 客户端的 provider/model 格式用于 WS RPC，HTTP 请求用默认模型
         full_response = ""
         async with httpx.AsyncClient(timeout=120) as client:
             response = await client.post(
                 f"{OPENCLAW_URL}/v1/chat/completions",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {OPENCLAW_TOKEN}",
-                    "x-openclaw-scopes": "operator.write,operator.read",
-                },
+                headers=openclaw_headers,
                 json={
-                    "model": "openclaw/main",  # HTTP API 必须使用 openclaw 格式
+                    "model": "openclaw/main",
                     "messages": messages,
                     "stream": False,
                     "session_id": "main",
@@ -172,20 +174,15 @@ async def chat(req: ChatRequest):
         return {"role": "assistant", "content": full_response}
 
     # 流式模式：返回SSE流
-    # 注意：HTTP chat completions 只接受 openclaw 或 openclaw/<agentId> 格式
     async def generate():
         full_response = ""
         async with httpx.AsyncClient(timeout=120) as client:
             async with client.stream(
                 "POST",
                 f"{OPENCLAW_URL}/v1/chat/completions",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {OPENCLAW_TOKEN}",
-                    "x-openclaw-scopes": "operator.write,operator.read",
-                },
+                headers=openclaw_headers,
                 json={
-                    "model": "openclaw/main",  # HTTP API 必须使用 openclaw 格式
+                    "model": "openclaw/main",
                     "messages": messages,
                     "stream": True,
                     "session_id": "main",
