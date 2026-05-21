@@ -14,8 +14,8 @@ class KittyService: ObservableObject {
         if let savedURL = UserDefaults.standard.string(forKey: "serverURL"), !savedURL.isEmpty {
             // 真机上：如果地址包含旧地址，更新为正确地址
             #if !targetEnvironment(simulator)
-            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") || savedURL.contains(":8080") || savedURL.contains("10.8.0.") {
-                let newURL = "http://192.168.31.174:8081"
+            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") || savedURL.contains(":8080") || savedURL.contains("192.168.") {
+                let newURL = "http://10.8.0.122:8081"
                 UserDefaults.standard.set(newURL, forKey: "serverURL")
                 return newURL
             }
@@ -26,7 +26,7 @@ class KittyService: ObservableObject {
         #if targetEnvironment(simulator)
         return "http://localhost:8081"
         #else
-        return "http://192.168.31.174:8081"
+        return "http://10.8.0.122:8081"
         #endif
     }
 
@@ -37,8 +37,8 @@ class KittyService: ObservableObject {
         // 启动时更新旧的服务器地址
         #if !targetEnvironment(simulator)
         if let savedURL = UserDefaults.standard.string(forKey: "serverURL") {
-            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") || savedURL.contains(":8080") || savedURL.contains("10.8.0.") {
-                UserDefaults.standard.set("http://192.168.31.174:8081", forKey: "serverURL")
+            if savedURL.contains("localhost") || savedURL.contains("127.0.0.1") || savedURL.contains(":18789") || savedURL.contains(":8080") || savedURL.contains("192.168.") {
+                UserDefaults.standard.set("http://10.8.0.122:8081", forKey: "serverURL")
             }
         }
         #endif
@@ -341,6 +341,99 @@ class KittyService: ObservableObject {
     func stopSpeaking() {
         audioPlayer?.stop()
         audioPlayer = nil
+    }
+
+    // MARK: - Chat with File
+
+    /// 上传 PDF 文件并发送消息，返回完整响应
+    func chatWithFile(_ message: String, fileData: Data, fileName: String, model: String? = nil) async throws -> String {
+        let boundary = "Boundary-\(UUID().uuidString)"
+
+        guard let url = URL(string: "\(serverURL)/chat-with-file") else {
+            throw KittyError.invalidURL("\(serverURL)/chat-with-file")
+        }
+
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        urlRequest.timeoutInterval = 180  // PDF 上传 + 处理可能较慢
+
+        // 构建 multipart form data
+        var body = Data()
+
+        // message 字段
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"message\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(message)\r\n".data(using: .utf8)!)
+
+        // session_id 字段
+        let sessionId = MessageStore.shared.sessionId
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"session_id\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(sessionId)\r\n".data(using: .utf8)!)
+
+        // model 字段（可选）
+        if let model = model {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(model)\r\n".data(using: .utf8)!)
+        }
+
+        // file 字段
+        let safeFileName = fileName.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "upload.pdf"
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(safeFileName)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: application/pdf\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n".data(using: .utf8)!)
+
+        // 结束边界
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        urlRequest.httpBody = body
+
+        logger.info("🌐 [chatWithFile] 上传文件: \(fileName), 大小: \(fileData.count) bytes")
+
+        do {
+            let (data, response) = try await session.data(for: urlRequest)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw KittyError.invalidResponse
+            }
+
+            logger.info("🌐 [chatWithFile] 响应状态码: \(httpResponse.statusCode)")
+
+            switch httpResponse.statusCode {
+            case 200:
+                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let content = json["content"] as? String else {
+                    throw KittyError.invalidResponse
+                }
+                return content
+            case 400:
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let detail = json["detail"] as? String {
+                    throw KittyError.invalidResponse
+                }
+                throw KittyError.httpError(400)
+            case 401, 403:
+                throw KittyError.unauthorized
+            case 500...599:
+                throw KittyError.serverError(httpResponse.statusCode)
+            default:
+                throw KittyError.httpError(httpResponse.statusCode)
+            }
+        } catch let error as KittyError {
+            throw error
+        } catch {
+            if (error as NSError).code == NSURLErrorTimedOut {
+                throw KittyError.timeout
+            } else if (error as NSError).code == NSURLErrorNotConnectedToInternet ||
+                      (error as NSError).code == NSURLErrorNetworkConnectionLost {
+                throw KittyError.networkError
+            }
+            throw KittyError.serverError(0)
+        }
     }
 
     // MARK: - Models

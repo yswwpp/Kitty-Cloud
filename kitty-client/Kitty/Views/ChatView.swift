@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @StateObject private var chatManager = ChatManager()
@@ -9,12 +10,14 @@ struct ChatView: View {
     @State private var availableModels: [ModelInfo] = []
     @State private var showingSettings = false
     @State private var showingClearAlert = false
+    @State private var showingDocumentPicker = false
 
     private var currentModelDisplayName: String {
         if let model = availableModels.first(where: { $0.id == selectedModel }) {
             return model.displayName
         }
-        return "Qwen3.6 Plus"
+        // fallback: 从 model id 提取显示名
+        return selectedModel.components(separatedBy: "/").last ?? selectedModel
     }
 
     var body: some View {
@@ -61,10 +64,15 @@ struct ChatView: View {
                     .background(Color.blue.opacity(0.1))
                 }
 
+                // 附件预览
+                if let attachment = chatManager.pendingAttachment {
+                    attachmentPreview(attachment)
+                }
+
                 // 输入区域
                 inputBar
             }
-            .navigationTitle("🐱 Kitty")
+            .navigationTitle("Kitty")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showingClearAlert = true }) {
@@ -106,6 +114,18 @@ struct ChatView: View {
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
             }
+            .sheet(isPresented: $showingDocumentPicker) {
+                DocumentPickerView { url in
+                    handleSelectedFile(url: url)
+                }
+            }
+            .onAppear {
+                Task {
+                    if let models = try? await KittyService.shared.fetchModels() {
+                        availableModels = models
+                    }
+                }
+            }
             .alert("清空对话", isPresented: $showingClearAlert) {
                 Button("取消", role: .cancel) { }
                 Button("清空", role: .destructive) {
@@ -115,6 +135,58 @@ struct ChatView: View {
                 Text("确定要清空所有对话记录吗？")
             }
         }
+    }
+
+    // MARK: - Attachment Preview
+
+    private func attachmentPreview(_ attachment: PendingAttachment) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.richtext")
+                .font(.title3)
+                .foregroundColor(.red)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(attachment.fileName)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                Text(ByteCountFormatter.string(fromByteCount: attachment.fileSize, countStyle: .file))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Button(action: {
+                chatManager.pendingAttachment = nil
+            }) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(10)
+        .background(Color(UIColor.secondarySystemBackground))
+        .cornerRadius(10)
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+    }
+
+    // MARK: - File Handling
+
+    private func handleSelectedFile(url: URL) {
+        // 获取文件访问权限
+        guard url.startAccessingSecurityScopedResource() else { return }
+        defer { url.stopAccessingSecurityScopedResource() }
+
+        guard let fileData = try? Data(contentsOf: url) else { return }
+        let fileName = url.lastPathComponent
+        let fileSize = Int64(fileData.count)
+
+        chatManager.pendingAttachment = PendingAttachment(
+            fileName: fileName,
+            fileSize: fileSize,
+            fileData: fileData
+        )
     }
 
     // MARK: - Message List
@@ -136,8 +208,12 @@ struct ChatView: View {
                     if chatManager.isStreaming && !chatManager.streamingText.isEmpty {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("🐱 Kitty")
-                                    .font(.caption2)
+                                HStack(spacing: 2) {
+                                        Image(systemName: "cat.fill")
+                                            .font(.caption2)
+                                        Text("Kitty")
+                                            .font(.caption2)
+                                    }
                                     .foregroundColor(.green)
                                 Text(chatManager.streamingText)
                                     .font(.body)
@@ -180,8 +256,9 @@ struct ChatView: View {
     private var emptyStateView: some View {
         VStack(spacing: 16) {
             Spacer()
-            Text("🐱")
+            Image(systemName: "cat.fill")
                 .font(.system(size: 60))
+                .foregroundColor(.green)
             Text("和 Kitty 聊聊天吧")
                 .font(.title3)
                 .foregroundColor(.secondary)
@@ -208,6 +285,15 @@ struct ChatView: View {
 
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
+            // 附件按钮
+            if !chatManager.isStreaming {
+                Button(action: { showingDocumentPicker = true }) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(chatManager.pendingAttachment != nil ? .green : .blue)
+                }
+            }
+
             TextField("输入消息...", text: $inputText)
                 .textFieldStyle(.roundedBorder)
 
@@ -232,7 +318,7 @@ struct ChatView: View {
     }
 
     private var canSend: Bool {
-        !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !chatManager.isStreaming
+        (!inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || chatManager.pendingAttachment != nil) && !chatManager.isStreaming
     }
 
     private func sendMessage() {
@@ -240,10 +326,41 @@ struct ChatView: View {
         let text = inputText
         inputText = ""
 
-        // 强制在主线程更新UI
         DispatchQueue.main.async {
-            print("🔴 [UI] 发送按钮被点击，消息: \(text)")
             self.chatManager.sendMessage(text)
+        }
+    }
+}
+
+// MARK: - Document Picker
+
+struct DocumentPickerView: UIViewControllerRepresentable {
+    let onPick: (URL) -> Void
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [UTType.pdf], asCopy: true)
+        picker.delegate = context.coordinator
+        picker.allowsMultipleSelection = false
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick)
+    }
+
+    class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onPick: (URL) -> Void
+
+        init(onPick: @escaping (URL) -> Void) {
+            self.onPick = onPick
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            if let url = urls.first {
+                onPick(url)
+            }
         }
     }
 }
@@ -258,17 +375,42 @@ struct MessageBubbleView: View {
             HStack {
                 Spacer(minLength: 60)
                 VStack(alignment: .trailing, spacing: 4) {
-                    Text("👤 你")
-                        .font(.caption2)
-                        .foregroundColor(.blue)
-                    if message.content.isEmpty {
+                    HStack(spacing: 2) {
+                        Image(systemName: "crown.fill")
+                            .font(.caption2)
+                        Text("老板")
+                            .font(.caption2)
+                    }
+                    .foregroundColor(.blue)
+
+                    // 附件显示
+                    if let attachment = message.attachment {
+                        HStack(spacing: 6) {
+                            Image(systemName: "doc.richtext.fill")
+                                .foregroundColor(.red)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(attachment.fileName)
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .lineLimit(1)
+                                Text(ByteCountFormatter.string(fromByteCount: attachment.fileSize, countStyle: .file))
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(8)
+                        .background(Color.blue.opacity(0.08))
+                        .cornerRadius(8)
+                    }
+
+                    if message.content.isEmpty && message.attachment == nil {
                         Text("（空消息）")
                             .font(.body)
                             .foregroundColor(.red)
                             .padding(12)
                             .background(Color.red.opacity(0.1))
                             .cornerRadius(16)
-                    } else {
+                    } else if !message.content.isEmpty {
                         Text(message.content)
                             .font(.body)
                             .padding(12)
@@ -281,9 +423,13 @@ struct MessageBubbleView: View {
         } else {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("🐱 Kitty")
-                        .font(.caption2)
-                        .foregroundColor(.green)
+                    HStack(spacing: 2) {
+                        Image(systemName: "cat.fill")
+                            .font(.caption2)
+                        Text("Kitty")
+                            .font(.caption2)
+                    }
+                    .foregroundColor(.green)
                     if message.content.isEmpty {
                         Text("（空回复）")
                             .font(.body)

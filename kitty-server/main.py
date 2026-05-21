@@ -7,7 +7,7 @@ import base64
 import os
 import time
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -361,6 +361,72 @@ async def list_models():
     if not models:
         return {"object": "list", "data": _FALLBACK_MODELS}
     return {"object": "list", "data": models}
+
+
+MAX_PDF_CHARS = 8000  # PDF 文本截断长度，避免超上下文
+
+
+def extract_pdf_text(file_bytes: bytes, filename: str = "unknown.pdf") -> str:
+    """提取 PDF 文本，截断到 MAX_PDF_CHARS"""
+    import pdfplumber
+    import io
+
+    text_parts = []
+    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        for i, page in enumerate(pdf.pages):
+            page_text = page.extract_text() or ""
+            if page_text:
+                text_parts.append(f"[第{i+1}页]\n{page_text}")
+
+    full_text = "\n\n".join(text_parts)
+    if len(full_text) > MAX_PDF_CHARS:
+        full_text = full_text[:MAX_PDF_CHARS] + f"\n\n...(已截断，原文共{len(full_text)}字符)"
+    return full_text
+
+
+@app.post("/chat-with-file")
+async def chat_with_file(
+    message: str = Form(""),
+    file: UploadFile = File(...),
+    session_id: Optional[str] = Form("default"),
+    model: Optional[str] = Form(None),
+):
+    """接收 PDF 文件 + 消息，提取文本后发给 OpenClaw"""
+    # 1. 读取并验证文件
+    file_bytes = await file.read()
+    filename = file.filename or "unknown.pdf"
+    print(f"[chat-with-file] 收到文件: {filename}, 大小: {len(file_bytes)} bytes")
+
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="仅支持 PDF 文件")
+
+    # 2. 提取 PDF 文本
+    try:
+        pdf_text = extract_pdf_text(file_bytes, filename)
+    except Exception as e:
+        print(f"[chat-with-file] PDF 提取失败: {e}")
+        raise HTTPException(status_code=400, detail=f"PDF 解析失败: {str(e)}")
+
+    if not pdf_text.strip():
+        raise HTTPException(status_code=400, detail="无法从 PDF 中提取文本，可能是扫描版 PDF")
+
+    # 3. 拼接带文件上下文的消息
+    user_message = message.strip() or "请解读这个文件"
+    contextual_message = (
+        f"[用户上传了PDF文件: {filename}]\n\n"
+        f"以下是PDF内容：\n---\n{pdf_text}\n---\n\n"
+        f"用户消息: {user_message}"
+    )
+
+    # 4. 复用 /chat 逻辑
+    req = ChatRequest(
+        message=contextual_message,
+        session_id=session_id,
+        history=[],
+        model=model,
+        stream=False,
+    )
+    return await chat(req)
 
 
 @app.post("/tts")

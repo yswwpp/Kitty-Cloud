@@ -1,16 +1,23 @@
 import Foundation
 
+struct Attachment: Codable {
+    let fileName: String
+    let fileSize: Int64
+}
+
 struct Message: Identifiable, Codable {
     let id: UUID
     let role: String      // "user" or "assistant"
     let content: String
     let timestamp: Date
+    var attachment: Attachment?
 
-    init(role: String, content: String) {
+    init(role: String, content: String, attachment: Attachment? = nil) {
         self.id = UUID()
         self.role = role
         self.content = content
         self.timestamp = Date()
+        self.attachment = attachment
     }
 }
 
@@ -34,8 +41,8 @@ class MessageStore: ObservableObject {
         loadMessages()
     }
 
-    func addMessage(role: String, content: String) {
-        let message = Message(role: role, content: content)
+    func addMessage(role: String, content: String, attachment: Attachment? = nil) {
+        let message = Message(role: role, content: content, attachment: attachment)
         messages.append(message)
         saveMessages()
     }

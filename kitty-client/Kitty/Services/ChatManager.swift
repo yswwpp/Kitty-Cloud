@@ -15,12 +15,19 @@ extension Character {
     }
 }
 
+struct PendingAttachment {
+    let fileName: String
+    let fileSize: Int64
+    let fileData: Data
+}
+
 @MainActor
 class ChatManager: ObservableObject {
     let messageStore = MessageStore.shared
     @Published var isStreaming = false
     @Published var streamingText = ""
     @Published var errorMessage: String?
+    @Published var pendingAttachment: PendingAttachment?
 
     private var selectedModel: String {
         UserDefaults.standard.string(forKey: "selectedModel") ?? "bailian/qwen3.6-plus"
@@ -32,26 +39,46 @@ class ChatManager: ObservableObject {
 
     func sendMessage(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        let hasAttachment = pendingAttachment != nil
+        guard !trimmed.isEmpty || hasAttachment else { return }
 
         // 取消之前的打字任务
         typingTask?.cancel()
         typingTask = nil
 
         errorMessage = nil
-        messageStore.addMessage(role: "user", content: trimmed)
+
+        let displayText = trimmed.isEmpty ? "[上传了PDF: \(pendingAttachment?.fileName ?? "")]" : trimmed
+        let attachment = pendingAttachment.map { Attachment(fileName: $0.fileName, fileSize: $0.fileSize) }
+        messageStore.addMessage(role: "user", content: displayText, attachment: attachment)
+
         isStreaming = true
         streamingText = ""
 
         let model = selectedModel
         let history = buildHistory()
+        let attachmentData = pendingAttachment
+
+        // 清除待发送附件
+        pendingAttachment = nil
 
         currentTask = Task { [weak self] in
             guard let self = self else { return }
 
             do {
-                // 使用非流式模式获取完整响应（绕过代理缓冲问题）
-                let fullResponse = try await self.kittyService.chatComplete(trimmed, history: history, model: model)
+                let fullResponse: String
+                if let att = attachmentData {
+                    // 带文件的消息
+                    fullResponse = try await self.kittyService.chatWithFile(
+                        trimmed.isEmpty ? "请解读这个文件" : trimmed,
+                        fileData: att.fileData,
+                        fileName: att.fileName,
+                        model: model
+                    )
+                } else {
+                    // 纯文本消息
+                    fullResponse = try await self.kittyService.chatComplete(trimmed, history: history, model: model)
+                }
 
                 // 模拟打字效果
                 await self.simulateTyping(fullResponse)

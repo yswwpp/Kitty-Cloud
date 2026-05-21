@@ -3,3 +3,5 @@ uvicorn
 httpx
 websockets
 pynacl
+pdfplumber
+python-multipart
