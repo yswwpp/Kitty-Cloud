@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制代码
 COPY main.py .
+COPY models.json .
 
 # 暴露端口
 EXPOSE 8080

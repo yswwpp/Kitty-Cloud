@@ -1,0 +1,166 @@
+{
+  "providers": {
+    "bailian": {
+      "baseUrl": "https://coding.dashscope.aliyuncs.com/v1",
+      "apiKey": "sk-sp-39f5f462df6a4b6cadc3c80c122bac8f",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "qwen3.5-plus",
+          "name": "qwen3.5-plus",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 65536
+        },
+        {
+          "id": "glm-5",
+          "name": "glm-5",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 202752,
+          "maxTokens": 16384
+        },
+        {
+          "id": "kimi-k2.5",
+          "name": "kimi-k2.5",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 262144,
+          "maxTokens": 32768
+        },
+        {
+          "id": "qwen3.6-plus",
+          "name": "qwen3.6-plus",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 65536,
+          "api": "openai-completions"
+        }
+      ]
+    },
+    "qianfan": {
+      "baseUrl": "https://qianfan.baidubce.com/anthropic/coding/v1",
+      "apiKey": "bce-v3/ALTAKSP-xUvHYJ36f27B3Hk0PfDGA/a86984ed36b5ff7807aaab6f4790be7512fca9d1",
+      "api": "anthropic-messages",
+      "models": [
+        {
+          "id": "glm-5.1",
+          "name": "glm-5.1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 262144,
+          "maxTokens": 65536,
+          "api": "anthropic-messages"
+        },
+        {
+          "id": "glm-5",
+          "name": "glm-5",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 262144,
+          "maxTokens": 65536,
+          "api": "anthropic-messages"
+        },
+        {
+          "id": "deepseek-v4-flash",
+          "name": "deepseek-v4-flash",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 262144,
+          "maxTokens": 65536,
+          "api": "anthropic-messages"
+        }
+      ]
+    },
+    "litellm": {
+      "baseUrl": "http://litellm.yswwpp.com",
+      "apiKey": "sk-cbeQGivCid5xFpO73tfCyA",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "qianfan-glm-5.1",
+          "name": "qianfan-glm-5.1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 65536,
+          "api": "openai-completions"
+        },
+        {
+          "id": "qianfan-deepseek-v4-flash",
+          "name": "qianfan-deepseek-v4-flash",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 65536,
+          "api": "openai-completions"
+        }
+      ]
+    }
+  }
+}
