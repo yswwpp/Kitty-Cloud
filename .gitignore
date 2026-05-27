@@ -54,8 +54,8 @@ __pycache__/
 # Debug
 DEBUG_LOG.md
 
-# Test files
-test_*.py
+# Test cache
+.pytest_cache/
 
 # Lock files
 *.lock

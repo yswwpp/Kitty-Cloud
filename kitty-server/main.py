@@ -25,13 +25,13 @@ app.add_middleware(
 
 # 从环境变量读取配置，提供默认值用于开发
 OPENCLAW_URL = os.getenv("OPENCLAW_URL", "http://localhost:18789")
-OPENCLAW_TOKEN = os.getenv("OPENCLAW_TOKEN", "f894296566d6b5365d2dd6ec9b19ecb70555add6cd73b0c7")
+OPENCLAW_TOKEN = os.getenv("OPENCLAW_TOKEN", "")
 
-VOLC_ASR_APP_ID = os.getenv("VOLC_ASR_APP_ID", "3214571057")
-VOLC_ASR_TOKEN = os.getenv("VOLC_ASR_TOKEN", "RSi0XcS9HHmyVMcvhie9-yDo_tIxRWE0")
+VOLC_ASR_APP_ID = os.getenv("VOLC_ASR_APP_ID", "")
+VOLC_ASR_TOKEN = os.getenv("VOLC_ASR_TOKEN", "")
 VOLC_ASR_RESOURCE_ID = os.getenv("VOLC_ASR_RESOURCE_ID", "volc.seedasr.sauc.duration")
-VOLC_TTS_APP_ID = os.getenv("VOLC_TTS_APP_ID", "3214571057")
-VOLC_TTS_TOKEN = os.getenv("VOLC_TTS_TOKEN", "RSi0XcS9HHmyVMcvhie9-yDo_tIxRWE0")
+VOLC_TTS_APP_ID = os.getenv("VOLC_TTS_APP_ID", "")
+VOLC_TTS_TOKEN = os.getenv("VOLC_TTS_TOKEN", "")
 VOLC_TTS_CLUSTER = os.getenv("VOLC_TTS_CLUSTER", "volcano_tts")
 
 # 会话管理
@@ -259,6 +259,9 @@ def load_models_from_config() -> list:
             config = json.load(f)
         result = []
         for provider_name, provider_info in config.get("providers", {}).items():
+            # apiKeyEnv: 从环境变量读取 API key
+            api_key_env = provider_info.get("apiKeyEnv")
+            api_key = os.getenv(api_key_env, "") if api_key_env else provider_info.get("apiKey", "")
             for m in provider_info.get("models", []):
                 result.append({
                     "id": f"{provider_name}/{m['id']}",

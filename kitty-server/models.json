@@ -2,7 +2,7 @@
   "providers": {
     "bailian": {
       "baseUrl": "https://coding.dashscope.aliyuncs.com/v1",
-      "apiKey": "sk-sp-39f5f462df6a4b6cadc3c80c122bac8f",
+      "apiKeyEnv": "BAILIAN_API_KEY",
       "api": "openai-completions",
       "models": [
         {
@@ -77,7 +77,7 @@
     },
     "qianfan": {
       "baseUrl": "https://qianfan.baidubce.com/anthropic/coding/v1",
-      "apiKey": "bce-v3/ALTAKSP-xUvHYJ36f27B3Hk0PfDGA/a86984ed36b5ff7807aaab6f4790be7512fca9d1",
+      "apiKeyEnv": "QIANFAN_API_KEY",
       "api": "anthropic-messages",
       "models": [
         {
@@ -135,7 +135,7 @@
     },
     "litellm": {
       "baseUrl": "http://litellm.yswwpp.com",
-      "apiKey": "sk-cbeQGivCid5xFpO73tfCyA",
+      "apiKeyEnv": "LITELLM_API_KEY",
       "api": "openai-completions",
       "models": [
         {
