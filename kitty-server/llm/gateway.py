@@ -69,14 +69,18 @@ class LLMGateway:
     def __init__(self, models_json_path: str, default_model: Optional[str] = None):
         self.models_json_path = models_json_path
         self.providers = _load_providers(models_json_path)
-        self.default_model = default_model or os.getenv(
-            "DEFAULT_MODEL", "deepseek/deepseek-v4-flash"
-        )
+        # 不再硬编码默认模型；未配置就保持 None，调用时若也没传 model 就报错
+        self.default_model = default_model or os.getenv("DEFAULT_MODEL") or None
 
     # ── 解析 model_id ───────────────────────────────────────────────
     def _resolve(self, model: Optional[str]) -> Tuple[ProviderConfig, str]:
         """返回 (provider_config, real_model_id)。"""
         model_id = model or self.default_model
+        if not model_id:
+            raise ValueError(
+                "未指定 model，且未配置 DEFAULT_MODEL 环境变量；"
+                "请在请求中传 model 或在 .env 中设置 DEFAULT_MODEL"
+            )
         if "/" not in model_id:
             raise ValueError(f"model 必须形如 'provider/model'，收到: {model_id!r}")
         provider_name, real_model = model_id.split("/", 1)

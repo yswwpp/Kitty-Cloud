@@ -37,7 +37,16 @@ from llm.cache import global_stats
 async def lifespan(app: FastAPI):
     print(f"[SERVER] 🚀 Kitty Server 启动中...")
     print(f"[SERVER] 📦 版本: 2.0.0 (LangGraph Agent)")
-    print(f"[SERVER] DEFAULT_MODEL: {os.getenv('DEFAULT_MODEL', 'deepseek/deepseek-v4-flash')}")
+    print(f"[SERVER] DEFAULT_MODEL: {os.getenv('DEFAULT_MODEL') or '(未设置，请求未指定 model 时将报错)'}")
+    # 启动即校验 models.json；坏掉就让容器直接退出，避免静默运行
+    try:
+        models = load_models_from_config()
+        _models_cache["data"] = models
+        _models_cache["cached_at"] = time.time()
+        print(f"[SERVER] models.json OK，共 {len(models)} 个模型")
+    except Exception as e:
+        print(f"[SERVER] ❌ models.json 加载失败: {e!r}")
+        raise
     await startup_agent()
     yield
     await shutdown_agent()
@@ -244,38 +253,33 @@ _MODELS_CACHE_TTL = 300  # 缓存 5 分钟
 
 
 def load_models_from_config() -> list:
-    """从本地 models.json 读取模型列表"""
+    """从本地 models.json 读取模型列表，失败则抛异常让调用方决定"""
     config_path = os.path.join(os.path.dirname(__file__), "models.json")
-    try:
-        with open(config_path, "r") as f:
-            config = json.load(f)
-        result = []
-        for provider_name, provider_info in config.get("providers", {}).items():
-            # apiKeyEnv: 从环境变量读取 API key
-            api_key_env = provider_info.get("apiKeyEnv")
-            api_key = os.getenv(api_key_env, "") if api_key_env else provider_info.get("apiKey", "")
-            for m in provider_info.get("models", []):
-                result.append({
-                    "id": f"{provider_name}/{m['id']}",
-                    "object": "model",
-                    "created": 0,
-                    "owned_by": provider_name,
-                    "display_name": m.get("name", m["id"]),
-                    "description": f"支持 {', '.join(m.get('input', ['text']))}",
-                    "context_window": m.get("contextWindow"),
-                    "max_tokens": m.get("maxTokens"),
-                })
-        return result
-    except Exception as e:
-        print(f"[models] 读取 models.json 失败: {e}")
-        return []
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    result = []
+    for provider_name, provider_info in config.get("providers", {}).items():
+        # apiKeyEnv: 从环境变量读取 API key
+        api_key_env = provider_info.get("apiKeyEnv")
+        api_key = os.getenv(api_key_env, "") if api_key_env else provider_info.get("apiKey", "")
+        for m in provider_info.get("models", []):
+            result.append({
+                "id": f"{provider_name}/{m['id']}",
+                "object": "model",
+                "created": 0,
+                "owned_by": provider_name,
+                "display_name": m.get("name", m["id"]),
+                "description": f"支持 {', '.join(m.get('input', ['text']))}",
+                "context_window": m.get("contextWindow"),
+                "max_tokens": m.get("maxTokens"),
+            })
+    if not result:
+        raise ValueError("models.json 中没有任何模型配置")
+    return result
 
 
-# 硬编码模型列表（models.json 不存在时回退）
-_FALLBACK_MODELS = [
-    {"id": "bailian/qwen3.6-plus", "object": "model", "created": 0, "owned_by": "bailian", "display_name": "Qwen3.6 Plus", "context_window": 131072},
-    {"id": "bailian/glm-5", "object": "model", "created": 0, "owned_by": "bailian", "display_name": "GLM-5", "context_window": 131072},
-]
+# 硬编码模型清单是"默认认知"，已删除。
+# models.json 缺失或损坏一律走启动失败 / 500，让运维立即看到。
 
 
 @app.get("/models")
@@ -283,9 +287,12 @@ async def list_models():
     """返回可用模型列表，从本地 models.json 读取，带缓存"""
     if _models_cache["data"] and (time.time() - _models_cache["cached_at"]) < _MODELS_CACHE_TTL:
         return {"object": "list", "data": _models_cache["data"]}
-    models = load_models_from_config()
-    if not models:
-        return {"object": "list", "data": _FALLBACK_MODELS}
+    try:
+        models = load_models_from_config()
+    except Exception as e:
+        # 不静默回退；让客户端拿到 500 + 详细原因，运维一眼看到
+        print(f"[models] 读取 models.json 失败: {e!r}")
+        raise HTTPException(status_code=500, detail=f"models.json 加载失败: {e}")
     _models_cache["data"] = models
     _models_cache["cached_at"] = time.time()
     return {"object": "list", "data": models}

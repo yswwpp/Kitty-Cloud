@@ -7,36 +7,24 @@
       "models": [
         {
           "id": "deepseek-v4-flash",
-          "name": "deepseek-v4-flash",
-          "reasoning": false,
-          "input": [
-            "text"
-          ],
-          "cost": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0
-          },
+          "name": "DeepSeek V4 Flash",
+          "reasoning": true,
+          "input": ["text"],
+          "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
           "contextWindow": 65536,
           "maxTokens": 8192,
+          "priority": 1,
           "api": "openai-completions"
         },
         {
           "id": "deepseek-chat",
-          "name": "deepseek-chat",
+          "name": "DeepSeek Chat",
           "reasoning": false,
-          "input": [
-            "text"
-          ],
-          "cost": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0
-          },
+          "input": ["text"],
+          "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
           "contextWindow": 65536,
           "maxTokens": 8192,
+          "priority": 2,
           "api": "openai-completions"
         }
       ]
@@ -48,71 +36,44 @@
       "models": [
         {
           "id": "qwen3.5-plus",
-          "name": "qwen3.5-plus",
+          "name": "Qwen3.5 Plus",
           "reasoning": false,
-          "input": [
-            "text",
-            "image"
-          ],
-          "cost": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0
-          },
+          "input": ["text", "image"],
+          "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
           "contextWindow": 1000000,
-          "maxTokens": 65536
+          "maxTokens": 65536,
+          "priority": 1
         },
         {
           "id": "glm-5",
-          "name": "glm-5",
+          "name": "GLM-5",
           "reasoning": false,
-          "input": [
-            "text"
-          ],
-          "cost": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0
-          },
+          "input": ["text"],
+          "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
           "contextWindow": 202752,
-          "maxTokens": 16384
+          "maxTokens": 16384,
+          "priority": 2
         },
         {
           "id": "kimi-k2.5",
-          "name": "kimi-k2.5",
+          "name": "Kimi K2.5",
           "reasoning": false,
-          "input": [
-            "text",
-            "image"
-          ],
-          "cost": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0
-          },
+          "input": ["text", "image"],
+          "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
           "contextWindow": 262144,
-          "maxTokens": 32768
+          "maxTokens": 32768,
+          "priority": 3
         },
         {
           "id": "qwen3.6-plus",
-          "name": "qwen3.6-plus",
+          "name": "Qwen3.6 Plus",
           "reasoning": false,
-          "input": [
-            "text",
-            "image"
-          ],
-          "cost": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0
-          },
+          "input": ["text", "image"],
+          "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
           "contextWindow": 1000000,
           "maxTokens": 65536,
-          "api": "openai-completions"
+          "api": "openai-completions",
+          "priority": 4
         }
       ]
     },
@@ -123,54 +84,36 @@
       "models": [
         {
           "id": "glm-5.1",
-          "name": "glm-5.1",
+          "name": "GLM-5.1 (Qianfan)",
           "reasoning": false,
-          "input": [
-            "text"
-          ],
-          "cost": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0
-          },
+          "input": ["text"],
+          "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
           "contextWindow": 262144,
           "maxTokens": 65536,
-          "api": "anthropic-messages"
+          "api": "anthropic-messages",
+          "priority": 1
         },
         {
           "id": "glm-5",
-          "name": "glm-5",
+          "name": "GLM-5 (Qianfan)",
           "reasoning": false,
-          "input": [
-            "text"
-          ],
-          "cost": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0
-          },
+          "input": ["text"],
+          "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
           "contextWindow": 262144,
           "maxTokens": 65536,
-          "api": "anthropic-messages"
+          "api": "anthropic-messages",
+          "priority": 2
         },
         {
           "id": "deepseek-v4-flash",
-          "name": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash (Qianfan)",
           "reasoning": false,
-          "input": [
-            "text"
-          ],
-          "cost": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0
-          },
+          "input": ["text"],
+          "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
           "contextWindow": 262144,
           "maxTokens": 65536,
-          "api": "anthropic-messages"
+          "api": "anthropic-messages",
+          "priority": 3
         }
       ]
     },
@@ -178,30 +121,108 @@
       "baseUrl": "http://litellm.yswwpp.com",
       "apiKeyEnv": "LITELLM_API_KEY",
       "api": "openai-completions",
+      "description": "调用 Litellm Proxy 获取完整模型路由（包含 ark/gpt-5.5）",
       "models": [
         {
-          "id": "qianfan-glm-5.1",
-          "name": "qianfan-glm-5.1",
-          "reasoning": false,
-          "input": [
-            "text"
-          ],
+          "id": "qianfan-deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash (通过 qianfan)",
+          "reasoning": true,
+          "input": ["text"],
           "contextWindow": 262144,
           "maxTokens": 65536,
-          "api": "openai-completions"
+          "api": "openai-completions",
+          "priority": 1
         },
         {
-          "id": "qianfan-deepseek-v4-flash",
-          "name": "qianfan-deepseek-v4-flash",
+          "id": "qianfan-glm-5.1",
+          "name": "GLM-5.1 (通过 qianfan)",
           "reasoning": false,
-          "input": [
-            "text"
-          ],
+          "input": ["text"],
           "contextWindow": 262144,
           "maxTokens": 65536,
-          "api": "openai-completions"
+          "api": "openai-completions",
+          "priority": 2
+        },
+        {
+          "id": "qianfan-glm-5",
+          "name": "GLM-5 (通过 qianfan)",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 262144,
+          "maxTokens": 65536,
+          "api": "openai-completions",
+          "priority": 3
+        },
+        {
+          "id": "ark-kimi-k2.6",
+          "name": "ARK Kimi K2.6",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "api": "openai-completions",
+          "priority": 4
+        },
+        {
+          "id": "ark-minimax-m2.7",
+          "name": "ARK MiniMax M2.7",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 200000,
+          "maxTokens": 32768,
+          "api": "openai-completions",
+          "priority": 5
+        },
+        {
+          "id": "ark-deepseek-v4-flash",
+          "name": "ARK DeepSeek V4 Flash",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 1000000,
+          "maxTokens": 65536,
+          "api": "openai-completions",
+          "priority": 6
+        },
+        {
+          "id": "ark-deepseek-v4-pro",
+          "name": "ARK DeepSeek V4 Pro",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 1000000,
+          "maxTokens": 8192,
+          "api": "openai-completions",
+          "priority": 7
+        },
+        {
+          "id": "ark-glm-5.1",
+          "name": "ARK GLM-5.1",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 262144,
+          "maxTokens": 65536,
+          "api": "openai-completions",
+          "priority": 8
+        },
+        {
+          "id": "gpt-5.5",
+          "name": "GPT-5.5 (OpenAI)",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 200000,
+          "maxTokens": 8192,
+          "api": "openai-completions",
+          "priority": 9
         }
       ]
     }
+  },
+  "routing_priority": {
+    "description": "推荐调用顺序（从低成本到高成本）",
+    "order": [
+      "deepseek/deepseek-v4-flash",
+      "litellm/qianfan-deepseek-v4-flash",
+      "litellm/ark-deepseek-v4-flash",
+      "litellm/gpt-5.5"
+    ]
   }
 }

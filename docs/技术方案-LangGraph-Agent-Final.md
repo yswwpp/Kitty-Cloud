@@ -1,5 +1,9 @@
 # Kitty-Cloud Agent 自研技术方案
 
+> ✅ **本方案已实施完成（Phase 1）。** 实际实现的技术文档请参阅 [技术文档.md](./技术文档.md)。
+>
+> 本文档是方案设计稿（v1.0），记录了替换 OpenClaw 的设计决策和规划。部分内容（如 Phase 2/3 工具和记忆）尚未实现，实际实现细节以技术文档为准。
+
 > 基于 LangGraph 替换 OpenClaw，构建项目专属的 Agent Runtime
 
 ---
