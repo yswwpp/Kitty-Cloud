@@ -65,3 +65,9 @@ Kitty/Kitty.xcworkspace/
 
 # CocoaPods
 kitty-client/Pods/
+
+# LangGraph SQLite checkpoint
+kitty-server/data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

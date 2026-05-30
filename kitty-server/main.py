@@ -7,13 +7,43 @@ import base64
 import os
 import time
 import httpx
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import websockets
-app = FastAPI(title="Kitty Server", version="1.0.0")
+
+# 加载 .env（可选）
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+except ImportError:
+    pass
+
+# Agent runtime（LangGraph 替换 OpenClaw）
+from agent import (
+    get_default_system_prompt,
+    run_chat,
+    run_chat_stream,
+    startup_agent,
+    shutdown_agent,
+)
+from llm.cache import global_stats
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print(f"[SERVER] 🚀 Kitty Server 启动中...")
+    print(f"[SERVER] 📦 版本: 2.0.0 (LangGraph Agent)")
+    print(f"[SERVER] DEFAULT_MODEL: {os.getenv('DEFAULT_MODEL', 'deepseek/deepseek-v4-flash')}")
+    await startup_agent()
+    yield
+    await shutdown_agent()
+
+
+app = FastAPI(title="Kitty Server", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,41 +68,8 @@ VOLC_TTS_CLUSTER = os.getenv("VOLC_TTS_CLUSTER", "volcano_tts")
 MAX_HISTORY_LENGTH = 20
 sessions = {}
 
-# 对话系统提示词（语音和文字聊天共用）
-VOICE_SYSTEM_PROMPT = """你是一个温馨的助手 Kitty，正在和用户聊天。
-
-## 对话风格
-
-- 像跟好朋友聊天一样，轻松自然
-- 用口语化表达，不要用书面语
-- 回复简洁，不要长篇大论
-- 适当加入自然的过渡词，如"嗯…"、"让我想想…"、"这个问题嘛…"
-
-## 格式要求（非常重要，必须严格遵守）
-
-- 禁止使用任何 Markdown 格式：不要用 **、*、#、-、`、>、| 等符号
-- 禁止使用列表：不要用编号列表或项目符号
-- 禁止使用 emoji 表情符号
-- 纯文本输出：只输出纯文字，不要加任何格式标记
-
-## 示例
-
-用户："今天天气怎么样？"
-你："嗯…让我想想。今天天气挺不错的，阳光明媚，适合出去走走。"
-
-用户："帮我查下航班"
-你："好的，我来帮你查一下。请问是哪个城市的航班？"
-
-## 禁止事项
-
-- 不要用复杂的句式和专业术语
-- 不要像客服机器人一样说"为您服务"
-- 不要用 emoji 表情
-- 不要用 Markdown（粗体、斜体、列表、标题等）
-- 不要用 Markdown（粗体、斜体、列表、标题等）
-- 不要用 emoji 表情
-
-记住：你是在跟人聊天，不是在写文章。保持自然、亲切、简洁。"""
+# 对话系统提示词从 agent 模块导入（语音和文字聊天共用，与 Agent 内一致）
+VOICE_SYSTEM_PROMPT = get_default_system_prompt()
 
 
 class ASRRequest(BaseModel):
@@ -97,17 +94,22 @@ class ClearSessionRequest(BaseModel):
     session_id: str = "default"
 
 
-@app.on_event("startup")
-async def startup_event():
-    print(f"[SERVER] 🚀 Kitty Server 启动中...")
-    print(f"[SERVER] 📦 版本: 1.0.1")
-    print(f"[SERVER] OpenClaw URL: {OPENCLAW_URL}")
-
-
 @app.get("/")
 async def root():
     print(f"[SERVER] 📨 收到请求: /")
-    return {"name": "Kitty Server", "version": "1.0.0", "status": "running"}
+    stats = global_stats()
+    return {
+        "name": "Kitty Server",
+        "version": "2.0.0",
+        "status": "running",
+        "agent": "langgraph",
+        "cache_stats": {
+            "calls": stats.calls,
+            "hit_tokens": stats.total_hit,
+            "miss_tokens": stats.total_miss,
+            "hit_rate": round(stats.hit_rate, 4),
+        },
+    }
 
 
 @app.post("/asr")
@@ -119,107 +121,97 @@ async def speech_to_text(req: ASRRequest):
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
+    """聊天端点：通过 LangGraph Agent 处理（替换原 OpenClaw 转发）。
+
+    入参 / 出参与之前完全一致，iOS 端无需改动：
+    - 流式：SSE，data: {"choices":[{"delta":{"content":"..."}}]}\\n\\n，末尾 [DONE]
+    - 非流式：{"role": "assistant", "content": "..."}
+    """
     session_id = req.session_id or "default"
 
+    # 维护一份内存里的可视化历史（与 /session/{id} 接口兼容）
     if session_id not in sessions:
         sessions[session_id] = {
             "messages": [],
             "created_at": asyncio.get_event_loop().time(),
         }
-
     session = sessions[session_id]
 
+    # 若前端传了 history，覆盖本地（保持原行为）
     if req.history:
         session["messages"] = req.history[-MAX_HISTORY_LENGTH:]
 
+    # 追加当前 user 消息到内存视图
     session["messages"].append({"role": "user", "content": req.message})
 
-    # 构建消息列表，包含系统提示词
-    messages = [{"role": "system", "content": VOICE_SYSTEM_PROMPT}]
-    messages.extend(session["messages"][-MAX_HISTORY_LENGTH:])
+    # 把现有 messages（不含当前 user）作为 history 传给 agent
+    history_for_agent = session["messages"][:-1][-MAX_HISTORY_LENGTH:]
 
-    # 构建通用请求头
-    openclaw_headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENCLAW_TOKEN}",
-    }
-    if req.model:
-        openclaw_headers["x-openclaw-model"] = req.model
-
-    # 根据stream参数选择响应模式
-    if req.stream == False:
-        full_response = ""
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
-                f"{OPENCLAW_URL}/v1/chat/completions",
-                headers=openclaw_headers,
-                json={
-                    "model": "openclaw/main",
-                    "messages": messages,
-                    "stream": False,
-                    "session_id": "main",
-                },
-                timeout=120,
+    # ── 非流式 ──
+    if req.stream is False:
+        try:
+            result = await run_chat(
+                message=req.message,
+                session_id=session_id,
+                model=req.model,
+                history=history_for_agent,
             )
-            result = response.json()
-            # 如果模型切换失败，去掉 x-openclaw-model 重试
-            if "error" in result and req.model:
-                print(f"[chat] 模型 {req.model} 失败: {result['error']}, 使用默认模型重试")
-                retry_headers = {k: v for k, v in openclaw_headers.items() if k != "x-openclaw-model"}
-                response = await client.post(
-                    f"{OPENCLAW_URL}/v1/chat/completions",
-                    headers=retry_headers,
-                    json={
-                        "model": "openclaw/main",
-                        "messages": messages,
-                        "stream": False,
-                        "session_id": "main",
-                    },
-                    timeout=120,
-                )
-                result = response.json()
-            print(f"[chat] OpenClaw 非流式响应: {result}")
-            if "choices" in result and len(result["choices"]) > 0:
-                full_response = result["choices"][0]["message"].get("content", "")
-            elif "error" in result:
-                print(f"[chat] OpenClaw 错误: {result['error']}")
+            full_response = result.get("content", "") or ""
+        except Exception as e:
+            print(f"[chat] Agent 调用失败: {e!r}")
+            raise HTTPException(status_code=500, detail=f"Agent error: {e}")
 
         session["messages"].append({"role": "assistant", "content": full_response})
         session["messages"] = session["messages"][-MAX_HISTORY_LENGTH:]
         return {"role": "assistant", "content": full_response}
 
-    # 流式模式：返回SSE流
+    # ── 流式 SSE ──
     async def generate():
         full_response = ""
-        async with httpx.AsyncClient(timeout=120) as client:
-            async with client.stream(
-                "POST",
-                f"{OPENCLAW_URL}/v1/chat/completions",
-                headers=openclaw_headers,
-                json={
-                    "model": "openclaw/main",
-                    "messages": messages,
-                    "stream": True,
-                    "session_id": "main",
-                },
-            ) as response:
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        data = line[6:]
-                        if data == "[DONE]":
-                            yield "data: [DONE]\n\n"
-                            break
-                        try:
-                            chunk = json.loads(data)
-                            if "error" in chunk:
-                                print(f"[chat] 流式错误: {chunk['error']}")
-                                break
-                            if content := chunk["choices"][0]["delta"].get("content"):
-                                full_response += content
-                                yield f"data: {json.dumps({'choices': [{'delta': {'content': content}}]})}\n\n"
-                        except:
-                            pass
+        try:
+            async for chunk in run_chat_stream(
+                message=req.message,
+                session_id=session_id,
+                model=req.model,
+                history=history_for_agent,
+            ):
+                ctype = chunk.get("type")
+                if ctype == "delta":
+                    piece = chunk.get("content", "")
+                    if piece:
+                        full_response += piece
+                        yield (
+                            "data: "
+                            + json.dumps(
+                                {"choices": [{"delta": {"content": piece}}]},
+                                ensure_ascii=False,
+                            )
+                            + "\n\n"
+                        )
+                elif ctype == "error":
+                    msg = chunk.get("message", "unknown error")
+                    print(f"[chat] 流式错误: {msg}")
+                    yield (
+                        "data: "
+                        + json.dumps({"error": msg}, ensure_ascii=False)
+                        + "\n\n"
+                    )
+                    break
+                elif ctype == "done":
+                    # 不在 SSE 中暴露 metrics（保持兼容）
+                    print(f"[chat] cache metrics: {chunk.get('metrics')}")
+                    break
+        except Exception as e:
+            print(f"[chat] 流式异常: {e!r}")
+            yield (
+                "data: "
+                + json.dumps({"error": str(e)}, ensure_ascii=False)
+                + "\n\n"
+            )
 
+        yield "data: [DONE]\n\n"
+
+        # 写入内存视图
         session["messages"].append({"role": "assistant", "content": full_response})
         session["messages"] = session["messages"][-MAX_HISTORY_LENGTH:]
 
@@ -609,4 +601,5 @@ def parse_asr_response(data: bytes) -> tuple[str, bool]:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8081)
+    port = int(os.getenv("PORT", "8081"))
+    uvicorn.run(app, host="0.0.0.0", port=port)

@@ -1,5 +1,46 @@
 {
   "providers": {
+    "deepseek": {
+      "baseUrl": "https://api.deepseek.com",
+      "apiKeyEnv": "DEEPSEEK_API_KEY",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "deepseek-v4-flash",
+          "name": "deepseek-v4-flash",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 65536,
+          "maxTokens": 8192,
+          "api": "openai-completions"
+        },
+        {
+          "id": "deepseek-chat",
+          "name": "deepseek-chat",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 65536,
+          "maxTokens": 8192,
+          "api": "openai-completions"
+        }
+      ]
+    },
     "bailian": {
       "baseUrl": "https://coding.dashscope.aliyuncs.com/v1",
       "apiKeyEnv": "BAILIAN_API_KEY",

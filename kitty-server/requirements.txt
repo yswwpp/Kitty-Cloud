@@ -1,7 +1,28 @@
-fastapi
-uvicorn
-httpx
-websockets
-pynacl
-pdfplumber
+# Web Framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
 python-multipart
+
+# LangGraph Agent Runtime
+langgraph>=1.0.0
+langgraph-checkpoint-sqlite>=3.0.1
+langchain-core>=1.0.0
+
+# LLM HTTP Client
+httpx>=0.27.0
+aiosqlite>=0.20.0
+
+# 环境变量
+python-dotenv>=1.0.0
+
+# ASR / TTS
+websockets>=14.0
+
+# PDF
+pdfplumber>=0.11.0
+
+# 数据校验
+pydantic>=2.0.0
+
+# 兼容旧依赖
+pynacl
