@@ -1,5 +1,9 @@
 version: '3.8'
 
+# 注意：日常部署请使用共享目录的 compose 文件：
+#   /home/yswwpp/dev/docker_file_sharing/kitty-server/docker-compose.yml
+# 这份留在仓库内作为参考/最小可运行示例。
+
 services:
   kitty-server:
     build: .
@@ -7,14 +11,23 @@ services:
     ports:
       - "8081:8081"
     environment:
-      - OPENCLAW_URL=${OPENCLAW_URL:-http://host.docker.internal:18789}
-      - OPENCLAW_TOKEN=${OPENCLAW_TOKEN}
-      - VOLC_ASR_APP_ID=${VOLC_ASR_APP_ID}
-      - VOLC_ASR_TOKEN=${VOLC_ASR_TOKEN}
-      - VOLC_ASR_RESOURCE_ID=${VOLC_ASR_RESOURCE_ID}
-      - VOLC_TTS_APP_ID=${VOLC_TTS_APP_ID}
-      - VOLC_TTS_TOKEN=${VOLC_TTS_TOKEN}
-      - VOLC_TTS_CLUSTER=${VOLC_TTS_CLUSTER}
+      # LLM Providers
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - BAILIAN_API_KEY=${BAILIAN_API_KEY:-}
+      - QIANFAN_API_KEY=${QIANFAN_API_KEY:-}
+      - LITELLM_API_KEY=${LITELLM_API_KEY:-}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-deepseek/deepseek-v4-flash}
+      # 火山引擎
+      - VOLC_ASR_APP_ID=${VOLC_ASR_APP_ID:-}
+      - VOLC_ASR_TOKEN=${VOLC_ASR_TOKEN:-}
+      - VOLC_ASR_RESOURCE_ID=${VOLC_ASR_RESOURCE_ID:-volc.seedasr.sauc.duration}
+      - VOLC_TTS_APP_ID=${VOLC_TTS_APP_ID:-}
+      - VOLC_TTS_TOKEN=${VOLC_TTS_TOKEN:-}
+      - VOLC_TTS_CLUSTER=${VOLC_TTS_CLUSTER:-volcano_tts}
+      # LangGraph checkpoint
+      - CHECKPOINT_DB_PATH=/app/data/checkpoints.sqlite
+    volumes:
+      - ./data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
