@@ -71,3 +71,5 @@ kitty-server/data/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+.ai/memory/
+.ai/prompts/

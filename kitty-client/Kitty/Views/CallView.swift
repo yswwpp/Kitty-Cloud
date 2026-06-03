@@ -18,8 +18,7 @@ struct CallView: View {
         if let model = availableModels.first(where: { $0.id == selectedModel }) {
             return model.displayName
         }
-        // 默认显示名称
-        return "Qwen3.6 Plus"
+        return selectedModel.components(separatedBy: "/").last ?? selectedModel
     }
 
     var body: some View {
@@ -40,7 +39,7 @@ struct CallView: View {
                 Spacer()
             }
             .padding()
-            .navigationTitle("🐱 Kitty")
+            .navigationTitle("Kitty")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showingHistory = true }) {
@@ -294,7 +293,7 @@ struct CallView: View {
             VStack(alignment: .leading, spacing: 12) {
                 if !manager.userText.isEmpty {
                     HStack {
-                        Text("👤")
+                        Image(systemName: "crown.fill")
                         Text(manager.userText)
                             .font(.body)
                         Spacer()
@@ -306,7 +305,7 @@ struct CallView: View {
 
                 if !manager.assistantText.isEmpty {
                     HStack {
-                        Text("🐱")
+                        Image(systemName: "cat.fill")
                         Text(manager.assistantText)
                             .font(.body)
                         Spacer()
@@ -370,9 +369,13 @@ struct HistoryView: View {
                     ForEach(messages.reversed()) { message in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text(message.role == "user" ? "👤 用户" : "🐱 Kitty")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
+                                HStack(spacing: 2) {
+                                        Image(systemName: message.role == "user" ? "crown.fill" : "cat.fill")
+                                            .font(.caption)
+                                        Text(message.role == "user" ? "老板" : "Kitty")
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                    }
                                     .foregroundColor(message.role == "user" ? .blue : .green)
                                 Spacer()
                                 Text(formatTime(message.timestamp))

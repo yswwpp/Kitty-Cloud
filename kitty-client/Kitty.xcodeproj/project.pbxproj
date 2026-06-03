@@ -30,7 +30,7 @@
 		0E75094EE21037057BF32CCA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		1A0EEFE661AA6689EAA320B1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1D59AF1707D27BC1C58BFCF8 /* KittyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KittyService.swift; sourceTree = "<group>"; };
-		3756AF7C3ABD86ED191B2413 /* Kitty.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Kitty.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3756AF7C3ABD86ED191B2413 /* Kitty.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kitty.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		446266AE2210D9B3F3E56F4F /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
 		618E6E019F4D9961B15AA3F8 /* ChatManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatManager.swift; sourceTree = "<group>"; };
 		A2DC63E85008DC002D9955EC /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
@@ -174,7 +174,6 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					AFD4C2FD1A8B634D03BF3F07 = {
-						DevelopmentTeam = LLDRT755HC;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -238,14 +237,14 @@
 				CODE_SIGN_ENTITLEMENTS = Kitty/Kitty.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = LLDRT755HC;
+				DEVELOPMENT_TEAM = 3VLSX8QJUX;
 				ENABLE_USER_SCRIPT_SANDBXING = NO;
 				INFOPLIST_FILE = Kitty/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.kitty.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yswwpp.kitty;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -258,14 +257,14 @@
 				CODE_SIGN_ENTITLEMENTS = Kitty/Kitty.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = LLDRT755HC;
+				DEVELOPMENT_TEAM = 3VLSX8QJUX;
 				ENABLE_USER_SCRIPT_SANDBXING = NO;
 				INFOPLIST_FILE = Kitty/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.kitty.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yswwpp.kitty;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

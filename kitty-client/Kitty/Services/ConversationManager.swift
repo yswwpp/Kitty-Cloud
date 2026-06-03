@@ -983,16 +983,10 @@ class ConversationManager: ObservableObject {
                     self.state = .speaking
                 }
 
-                let audioData = try await kittyService.synthesizeSpeech(fullReply)
-
-                // 检查是否被取消
-                if isCancelled || Task.isCancelled || !isInCall {
-                    NSLog("⏹️ 播放前任务已取消")
-                    return
-                }
-
-                // 等待音频播放完成（支持打断）
-                await playAudioAndWait(audioData)
+                // 分段合成播放，避免长文本 TTS 超时
+                let sentences = splitTextIntoSentences(fullReply)
+                NSLog("🔊 分为 \(sentences.count) 段进行语音合成")
+                try await synthesizeAndPlaySequentially(sentences)
             } else {
                 stopThinkingSound()
             }
@@ -1099,6 +1093,113 @@ class ConversationManager: ObservableObject {
     private func stopCallTimer() {
         callTimer?.invalidate()
         callTimer = nil
+    }
+
+    // MARK: - Text Splitting (for chunked TTS)
+
+    /// 将长文本按句子分段，每段不超过 maxChars 字符
+    private func splitTextIntoSentences(_ text: String, maxChars: Int = 200) -> [String] {
+        // 中英文句子结束标点
+        let sentenceEnds: Set<Character> = ["。", "！", "？", "；", ".", "!", "?", ";", "\n"]
+
+        var segments: [String] = []
+        var currentSegment = ""
+
+        for char in text {
+            currentSegment.append(char)
+
+            let isEnd = sentenceEnds.contains(char)
+            let overLimit = currentSegment.count >= maxChars
+
+            if isEnd || overLimit {
+                let trimmed = currentSegment.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    segments.append(trimmed)
+                }
+                currentSegment = ""
+            }
+        }
+
+        // 处理剩余文本
+        let remaining = currentSegment.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !remaining.isEmpty {
+            segments.append(remaining)
+        }
+
+        return segments
+    }
+
+    /// 分段合成并顺序播放语音（流水线并发，零卡顿）
+    private func synthesizeAndPlaySequentially(_ segments: [String]) async throws {
+        guard !segments.isEmpty else { return }
+
+        // 生产者-消费者模型：并发合成 → 按序入队 → 顺序播放
+        let (stream, continuation) = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
+        let maxConcurrent = 3
+
+        // 生产者：流水线并发合成
+        let producerTask = Task { [weak self] in
+            guard let self = self else {
+                continuation.finish()
+                return
+            }
+
+            var completed: [Int: Data] = [:]
+            var nextYieldIndex = 0
+            var nextSynthIndex = 0
+            let totalCount = segments.count
+
+            await withTaskGroup(of: (Int, Data?).self) { group in
+                // 填充初始并发槽位
+                while nextSynthIndex < min(maxConcurrent, totalCount) {
+                    let idx = nextSynthIndex
+                    let segment = segments[idx]
+                    nextSynthIndex += 1
+                    group.addTask { [weak self] in
+                        guard let self = self, self.isInCall, !self.isCancelled else { return (idx, nil) }
+                        NSLog("🔊 合成第 \(idx+1)/\(totalCount) 段: \(segment.prefix(30))...")
+                        return (idx, try? await self.kittyService.synthesizeSpeech(segment))
+                    }
+                }
+
+                // 收结果、补新任务、按序投递
+                for await (index, data) in group {
+                    guard self.isInCall && !self.isCancelled else { group.cancelAll(); break }
+
+                    if let data = data {
+                        completed[index] = data
+                    }
+
+                    // 补充合成任务，保持流水线满载
+                    if nextSynthIndex < totalCount {
+                        let idx = nextSynthIndex
+                        let segment = segments[idx]
+                        nextSynthIndex += 1
+                        group.addTask { [weak self] in
+                            guard let self = self, self.isInCall, !self.isCancelled else { return (idx, nil) }
+                            NSLog("🔊 合成第 \(idx+1)/\(totalCount) 段: \(segment.prefix(30))...")
+                            return (idx, try? await self.kittyService.synthesizeSpeech(segment))
+                        }
+                    }
+
+                    // 按序投递已完成的音频
+                    while let data = completed.removeValue(forKey: nextYieldIndex) {
+                        continuation.yield(data)
+                        nextYieldIndex += 1
+                    }
+                }
+            }
+
+            continuation.finish()
+        }
+
+        // 消费者：顺序播放，零等待
+        for await audioData in stream {
+            guard isInCall && !isCancelled && !Task.isCancelled else { break }
+            await playAudioAndWait(audioData)
+        }
+
+        producerTask.cancel()
     }
 
     // MARK: - History Management
