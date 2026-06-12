@@ -1,0 +1,20 @@
+[Unit]
+Description=Kitty Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/yswwpp/deploy/kitty-cloud/current/kitty-server
+EnvironmentFile=/home/yswwpp/dev/docker_file_sharing/kitty-server/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PORT=8081
+Environment=KITTY_ENV_PATH=/home/yswwpp/dev/docker_file_sharing/kitty-server/.env
+Environment=MODELS_JSON_PATH=/home/yswwpp/dev/docker_file_sharing/kitty-server/models.json
+Environment=CHECKPOINT_DB_PATH=/home/yswwpp/dev/docker_file_sharing/kitty-server/data/checkpoints.sqlite
+ExecStart=/home/yswwpp/deploy/kitty-cloud/.venv/bin/python /home/yswwpp/deploy/kitty-cloud/current/kitty-server/main.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

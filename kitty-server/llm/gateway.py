@@ -289,9 +289,12 @@ def get_gateway(models_json_path: Optional[str] = None) -> LLMGateway:
     global _GATEWAY
     if _GATEWAY is None:
         if models_json_path is None:
-            models_json_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "models.json",
-            )
+            models_json_path = os.getenv("MODELS_JSON_PATH")
+            if not models_json_path:
+                models_json_path = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "models.json",
+                )
+        models_json_path = os.path.abspath(os.path.expanduser(models_json_path))
         _GATEWAY = LLMGateway(models_json_path)
     return _GATEWAY

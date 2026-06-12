@@ -15,10 +15,22 @@ from pydantic import BaseModel
 from typing import Optional
 import websockets
 
-# 加载 .env（可选）
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def resolve_config_path(env_name: str, default_name: str) -> str:
+    """Resolve an external config path, falling back to the app directory."""
+    configured = os.getenv(env_name)
+    if configured:
+        return os.path.abspath(os.path.expanduser(configured))
+    return os.path.join(BASE_DIR, default_name)
+
+
+# 加载 .env（可选）；生产环境可通过 KITTY_ENV_PATH 指向外部配置目录。
 try:
     from dotenv import load_dotenv
-    load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
+    load_dotenv(resolve_config_path("KITTY_ENV_PATH", ".env"))
 except ImportError:
     pass
 
@@ -38,7 +50,8 @@ async def lifespan(app: FastAPI):
     print(f"[SERVER] 🚀 Kitty Server 启动中...")
     print(f"[SERVER] 📦 版本: 2.0.0 (LangGraph Agent)")
     print(f"[SERVER] DEFAULT_MODEL: {os.getenv('DEFAULT_MODEL') or '(未设置，请求未指定 model 时将报错)'}")
-    # 启动即校验 models.json；坏掉就让容器直接退出，避免静默运行
+    print(f"[SERVER] models.json: {resolve_config_path('MODELS_JSON_PATH', 'models.json')}")
+    # 启动即校验 models.json；坏掉就让服务直接退出，避免静默运行
     try:
         models = load_models_from_config()
         _models_cache["data"] = models
@@ -63,9 +76,6 @@ app.add_middleware(
 )
 
 # 从环境变量读取配置，提供默认值用于开发
-OPENCLAW_URL = os.getenv("OPENCLAW_URL", "http://localhost:18789")
-OPENCLAW_TOKEN = os.getenv("OPENCLAW_TOKEN", "")
-
 VOLC_ASR_APP_ID = os.getenv("VOLC_ASR_APP_ID", "")
 VOLC_ASR_TOKEN = os.getenv("VOLC_ASR_TOKEN", "")
 VOLC_ASR_RESOURCE_ID = os.getenv("VOLC_ASR_RESOURCE_ID", "volc.seedasr.sauc.duration")
@@ -254,8 +264,8 @@ _MODELS_CACHE_TTL = 300  # 缓存 5 分钟
 
 def load_models_from_config() -> list:
     """从本地 models.json 读取模型列表，失败则抛异常让调用方决定"""
-    config_path = os.path.join(os.path.dirname(__file__), "models.json")
-    with open(config_path, "r") as f:
+    config_path = resolve_config_path("MODELS_JSON_PATH", "models.json")
+    with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
     result = []
     for provider_name, provider_info in config.get("providers", {}).items():
@@ -326,7 +336,7 @@ async def chat_with_file(
     session_id: Optional[str] = Form("default"),
     model: Optional[str] = Form(None),
 ):
-    """接收 PDF 文件 + 消息，提取文本后发给 OpenClaw"""
+    """接收 PDF 文件 + 消息，提取文本后发给 LangGraph Agent"""
     # 1. 读取并验证文件
     file_bytes = await file.read()
     filename = file.filename or "unknown.pdf"

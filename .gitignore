@@ -53,6 +53,7 @@ __pycache__/
 
 # Debug
 DEBUG_LOG.md
+kitty-client/test_tts.py
 
 # Test cache
 .pytest_cache/

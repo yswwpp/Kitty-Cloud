@@ -20,7 +20,7 @@ iOS App ──→ kitty-server (FastAPI) ──→ LangGraph Agent ──→ LLM
 - ✅ Cache-First 调用策略，DeepSeek KV Cache 命中率 80%+
 - ✅ 多 Provider 支持（DeepSeek / 百炼 / 千帆 / LiteLLM），模型热切换
 - ✅ SQLite Checkpoint 持久化，重启不丢会话
-- ✅ Docker 部署，配置与数据共享目录挂载
+- ✅ 宿主机 systemd 部署，程序与配置/数据分离
 
 ## 项目结构
 
@@ -37,7 +37,8 @@ Kitty-Cloud/
 │   │   ├── gateway.py            #   多 Provider 网关
 │   │   └── cache.py              #   Cache 策略 + 命中率统计
 │   ├── models.json               # 模型配置
-│   └── Dockerfile
+│   ├── deploy/                   # systemd 部署配置
+│   └── Dockerfile                # legacy Docker 配置
 │
 ├── kitty-client/                 # iOS 客户端 (Swift + SwiftUI)
 │
@@ -51,18 +52,23 @@ Kitty-Cloud/
 ### 服务端部署
 
 ```bash
-# 1. 配置共享目录
+# 1. 配置外部数据目录
 cd /home/yswwpp/dev/docker_file_sharing/kitty-server
 # 编辑 .env（API key、DEFAULT_MODEL 等）
 # 编辑 models.json（模型配置）
 
 # 2. 启动
-./start.sh
+cd /home/yswwpp/dev/project/tools/Kitty-Cloud
+./deploy.sh
 
 # 3. 验证
 curl http://127.0.0.1:8081/
 curl http://127.0.0.1:8081/models
 ```
+
+生产环境程序部署到 `/home/yswwpp/deploy/kitty-cloud/current`，Python 虚拟环境在
+`/home/yswwpp/deploy/kitty-cloud/.venv`。`.env`、`models.json` 和 checkpoint
+数据库保留在 `/home/yswwpp/dev/docker_file_sharing/kitty-server`，更新程序不会覆盖数据。
 
 ### iOS 客户端
 
